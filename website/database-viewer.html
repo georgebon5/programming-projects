@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🗄️ Database Store Viewer - HelpMeAnytime</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .header h1 {
+            color: #667eea;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .warning {
+            background: #fff3cd;
+            color: #856404;
+            padding: 15px;
+            border-radius: 10px;
+            border-left: 4px solid #ffc107;
+            margin-top: 15px;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        .refresh-btn {
+            background: #10b981;
+        }
+        
+        .refresh-btn:hover {
+            background: #059669;
+        }
+        
+        .store-section {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .store-section h2 {
+            color: #333;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #667eea;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 3em;
+            font-weight: bold;
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        
+        .data-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .data-item h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        
+        .data-item pre {
+            background: #2d3748;
+            color: #48bb78;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+        
+        .empty-state svg {
+            width: 100px;
+            height: 100px;
+            margin-bottom: 20px;
+            opacity: 0.3;
+        }
+        
+        .timestamp {
+            color: #666;
+            font-size: 0.9em;
+            font-style: italic;
+            margin-top: 10px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🗄️ Database Store Viewer</h1>
+            <p>Εδώ βλέπεις τι έχεις αποθηκευμένο στο in-memory store του API</p>
+            
+            <div class="warning">
+                <strong>⚠️ Προσοχή:</strong> Αυτά τα δεδομένα αποθηκεύονται στη RAM (in-memory) και χάνονται όταν:
+                <ul style="margin-top: 10px; margin-left: 20px;">
+                    <li>Κάνεις refresh τη σελίδα</li>
+                    <li>Σταματάς τον Next.js server (Ctrl+C)</li>
+                    <li>Γίνει hot reload του server</li>
+                </ul>
+            </div>
+            
+            <div class="controls">
+                <button class="refresh-btn" onclick="loadData()">🔄 Ανανέωση</button>
+                <button onclick="window.location.href='http://localhost:3000'">🏠 Αρχική</button>
+                <button onclick="window.location.href='http://localhost:3000/projects'">📋 Projects</button>
+                <button onclick="window.location.href='http://localhost:3000/bookings'">📅 Bookings</button>
+            </div>
+        </div>
+
+        <div id="content">
+            <div class="loading">
+                <div class="spinner"></div>
+                <p style="margin-top: 20px;">Φόρτωση δεδομένων...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadData() {
+            const contentDiv = document.getElementById('content');
+            contentDiv.innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p style="margin-top: 20px;">Φόρτωση δεδομένων...</p>
+                </div>
+            `;
+
+            try {
+                const response = await fetch('http://localhost:3000/api/debug');
+                const data = await response.json();
+
+                contentDiv.innerHTML = `
+                    <div class="stats">
+                        <div class="stat-card">
+                            <span class="stat-number">${data.stores.projects.count}</span>
+                            <span class="stat-label">Projects</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-number">${data.stores.bookings.count}</span>
+                            <span class="stat-label">Bookings</span>
+                        </div>
+                    </div>
+
+                    <div class="store-section">
+                        <h2>📋 Projects Store (${data.stores.projects.count})</h2>
+                        ${data.stores.projects.count > 0 ? 
+                            data.stores.projects.data.map(project => `
+                                <div class="data-item">
+                                    <h3>${project.title}</h3>
+                                    <pre>${JSON.stringify(project, null, 2)}</pre>
+                                </div>
+                            `).join('') : 
+                            '<div class="empty-state">📭<br>Δεν υπάρχουν projects</div>'
+                        }
+                    </div>
+
+                    <div class="store-section">
+                        <h2>📅 Bookings Store (${data.stores.bookings.count})</h2>
+                        ${data.stores.bookings.count > 0 ? 
+                            data.stores.bookings.data.map(booking => `
+                                <div class="data-item">
+                                    <h3>Booking #${booking.id}</h3>
+                                    <pre>${JSON.stringify(booking, null, 2)}</pre>
+                                </div>
+                            `).join('') : 
+                            '<div class="empty-state">📭<br>Δεν υπάρχουν bookings</div>'
+                        }
+                    </div>
+
+                    <div class="timestamp">
+                        Τελευταία ενημέρωση: ${new Date(data.timestamp).toLocaleString('el-GR')}
+                    </div>
+                `;
+            } catch (error) {
+                contentDiv.innerHTML = `
+                    <div class="store-section">
+                        <h2 style="color: #dc3545;">❌ Σφάλμα</h2>
+                        <p>Δεν μπόρεσα να φορτώσω τα δεδομένα. Σιγουρέψου ότι ο Next.js server τρέχει στο http://localhost:3000</p>
+                        <pre style="background: #f8d7da; color: #721c24; padding: 15px; border-radius: 8px; margin-top: 15px;">${error.message}</pre>
+                    </div>
+                `;
+            }
+        }
+
+        // Auto-load on page load
+        loadData();
+
+        // Auto-refresh every 5 seconds
+        setInterval(loadData, 5000);
+    </script>
+</body>
+</html>
