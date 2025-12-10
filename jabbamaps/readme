@@ -1,0 +1,197 @@
+-ΒΙΒΛΙΟΘΗΚΕΣ-
+stdio.h: Επειδή χρησιμοποιώ την printf(), fopen(), fgets() και fclose().
+stdlib.h: Επειδή χρησιμοποιώ την malloc() και free().
+limits.h: Επειδή χρησιμοποιώ το INT_MAX.
+string.h: Επειδή χρησιμοποιώ την strcmp() και strcpy().
+
+-ΜΕΤΑΓΛΩΤΤΙΣΗ-
+  ``` gcc -m32 -Ofast -Wall -Wextra -Werror -pedantic -o jabbamaps jabbamaps.c ```
+
+-ΣΥΝΑΡΤΗΣΕΙΣ-
+
+
+    int find_city_index(City *cities, int cityCount, const char *city) {
+    for (int i = 0; i < cityCount; i++) {
+        if (strcmp(cities[i].name, city) == 0) { 
+        
+            return i;
+        }
+    }
+    return -1; 
+    }
+  
+Σκοπός της συνάρτησης find_city_index είναι να βρει τον δείκτη μιας πόλης στον πίνακα των πόλεων, συγκρίνοντας το όνομα της πόλης που παρέχεται. Αυτό υλοποιείται μέσω ενός βρόχου for και μέσω της συνάρτησης strcmp, που ελέγχει αν δύο ονόματα είναι ίσα. Αν βρεθεί, επιστρέφει τη θέση του πίνακα όπου βρέθηκε το όνομα. Αλλιώς επιστρέφει την τιμή -1.
+
+
+```
+void print_route(int *path, int cityCount, int **distances, City *cities, long long best_cost) {
+    printf("We will visit the cities in the following order:\n");
+
+    for (int i = 0; i < cityCount - 1; i++) {
+        int current_city = path[i];
+        int next_city = path[i + 1];
+        printf("%s -(%d)-> ", cities[current_city].name, distances[current_city][next_city]);
+    }
+    printf("%s\n", cities[path[cityCount - 1]].name);
+    printf("Total cost: %lld\n", best_cost);
+}
+```
+
+Η συνάρτηση αυτή έχει ως σκοπό να εκτυπώνει την βέλτιστη διαδρομή και το συνολικό κόστος της διαδρομής.
+Οι είσοδοι είναι:
+
+int *path: Δείκτης σε πίνακα που περιέχει την ακολουθία των δεικτών των πόλεων.
+int cityCount: Ο συνολικός αριθμός των πόλεων.
+int **distances: Δείκτης σε έναν πίνακα 2x2 που αποθηκεύει τις αποστάσεις μεταξύ των πόλεων.
+City *cities: Δείκτης σε έναν πίνακα City που περιέχει τα ονόματα των πόλεων.
+long long best_cost: Το μικρότερο κόστος της διαδρομής.
+
+Αρχικά, η συνάρτηση εκτυπώνει το μήνυμα: We will visit the cities in the following order:. Στη συνέχεια, διατρέχει τον πίνακα path, εκτυπώνοντας τις διαδρομές και τις αποστάσεις, και καταλήγει με το συνολικό κόστος.
+
+
+```
+void nearest_neighbor(int cityCount, int **distances, int *best_path, long long *best_cost) {
+    int *visited = (int *)malloc(sizeof(int) * cityCount);
+    int *path = (int *)malloc(sizeof(int) * cityCount);
+
+    for (int i = 0; i < cityCount; i++) {
+        visited[i] = 0;
+    }
+
+    int current_city = 0; 
+    visited[current_city] = 1; 
+    path[0] = current_city; 
+
+    long long total_cost = 0; 
+
+    for (int i = 1; i < cityCount; i++) {
+        int next_city = -1;
+        int min_distance = INT_MAX;
+
+        for (int j = 0; j < cityCount; j++) {
+            if (!visited[j] && distances[current_city][j] < min_distance) {
+                min_distance = distances[current_city][j];
+                next_city = j;
+            }
+        }
+
+        visited[next_city] = 1; 
+        path[i] = next_city; 
+        total_cost += min_distance;
+        current_city = next_city;
+    }
+
+    *best_cost = total_cost;
+    memcpy(best_path, path, sizeof(int) * cityCount);
+
+    free(visited);
+    free(path); 
+}
+ ```
+
+  Στοχος της συναρτησης ```nearest_neighbor``` ειναι να υλοποιηση τον αλγοριθμο Nearest Neighbor. Ο αλγόριθμος προσπαθεί να βρει μια διαδρομή που επισκέπτεται όλες τις πόλεις, ξεκινώντας από μια πόλη και επιλέγοντας κάθε φορά την κοντινότερη πόλη που δεν έχει επισκεφτεί ακόμα. Για αρχη αρχικοποιω τον πινακα ```visited``` με μηδενικα. Ο πινακας αυτος απεικονιζει αν μια πολη εχει επισκεφτει ή οχι. Επισης χρησιμοποιω τον πινακα ```path``` που αποθηκευω την ακολουθια τον πολεων. Ο αλγόριθμος αναζητά την κοντινότερη πόλη που δεν έχει επισκεφτεί ακόμα. Για κάθε πόλη, ελέγχει τις αποστάσεις προς όλες τις άλλες πόλεις που δεν έχουν επισκεφτεί. Οταν βρεθει η πολη με την ελαχιστη διαδρομη τοτε προστιθεται στην διαδρομη. Σε αυτο το σημειο στο συνολικο κοστος προστιθεται και το κοστος της αποστασης. Η διαδικασια αυτη επαναλαμβανεται μεχρι να σαρωθουν ολες οι πολεις. Όταν όλες οι πόλεις έχουν επισκεφτεί, το συνολικό κόστος αποθηκεύεται στη μεταβλητή best_cost.
+Η τελική διαδρομή αντιγράφεται στον πίνακα best_path που παρέχεται ως παράμετρος στην συνάρτηση. Οι δυναμικά κατανεμημένοι πίνακες visited και path αποδεσμεύονται για να αποφευχθούν διαρροές μνήμης.
+
+-STRUCT-
+ Εχω φτιαξει μια δικια μου δομη δεδομενων που ονομαζεται ```City``` και περιεχει ονομα πολης με μεγιστο μηκος χαρακτηρων 50.
+
+```
+typedef struct {
+    char name[50]; 
+} City;
+```
+
+-MAIN-
+  Αρχικα ελεγχω αν εχει δοθει σωστο πληθος ορισματων αν οχι τοτε εκτυπωνει αντιστοιχο μηνυμα και τερματιζει με κωδικο εξοδου 1.
+
+  ```
+if (argc != 2) { 
+        fprintf(stderr, "Usage: %s <filename>\n", argv[0]);
+        return 1;
+    }
+```
+  Στην συνεχεια ανοιγω το αρχειο με την συναρτηση ```fopen``` σε λειτουργια αναγνωσης. Επισης παιρνω και την περιπτωση που το αρχειο δεν ανοιξει. Τοτε εκτυπωνεται καταλληλο μηνυμα και το προγραμμα τερματιζει με κωδικο εξοδου 1.
+
+  ```
+ char *filename = argv[1];
+    FILE *file = fopen(filename, "r"); 
+    if (!file) { 
+        fprintf(stderr, "Error opening file\n");
+        return 1;
+    }
+```
+
+
+  Στην συνεχεια με τις συναρτησεις ```fseek``` και ```ftell``` ελεγχω αν το αρχειο ειναι κενο. Συγγεκριμενα η συναρτηση ```fseek``` μετακινει τον δεικτη στο τελος του αρχειου (εδω η μετατοπιση ειναι μηδεν). Η συναρτηση ```ftell``` επιστρεφει το μεγεθος του αρχειου σε bytes. Οποτε αν το αρχειο ειναι κενο τοτε η τιμη της συναρτησης θα ειναι 0. Αν ειναι μηδεν τοτε το προγραμμα εκτυπωνει αντιστοιχο μηνυμα και τερματιζει με κωδικο 1. Αλλιως η συνάρτηση ```rewind``` επαναφέρει τον δείκτη του αρχείου στην αρχή του αρχείου, ώστε να μπορούμε να διαβάσουμε από την αρχή του αρχείου.
+
+  ```
+    fseek(file, 0, SEEK_END);      
+    long file_size = ftell(file);  
+    if (file_size == 0) {
+        fprintf(stderr, "Error: The file is empty.\n");
+        fclose(file);
+        return 1;
+    }
+    rewind(file);
+```
+
+  Αρχικοποιω τον πινακα ```line``` για την αποθηκευση των δεδομενων απο το αρχειο και κανω δυναμικη δεσμευση του πινακα ```cities``` που ειναι τυπου δεδομενων ```City```. Αρχικοποιω και το ``` cityCount = 0 ```. Επισης κανω δυναμικη δεσμευση του δυσδιαστατου πινακα ```distances```.
+
+
+```
+  char line[128]; 
+    City *cities = (City *)malloc(sizeof(City) * MAX_CITIES); 
+    int cityCount = 0;
+    int **distances = (int **)malloc(sizeof(int *) * MAX_CITIES); 
+```
+  Κανω αρχικοποιηση ολων των στοιχειων του πινακα ```distances``` με το μεγιστο ακεραιο INT_MAX.
+
+```
+  for (int i = 0; i < MAX_CITIES; i++) {
+        distances[i] = (int *)malloc(sizeof(int) * MAX_CITIES);
+        for (int j = 0; j < MAX_CITIES; j++) {
+            distances[i][j] = INT_MAX; 
+        }
+    }
+```
+
+  Μεσα σε μια επαναληψη ```while``` θα γινεται αναγνωση του αρχιεου και αποθηκευση των πολεων του αρχειου στους πινακες χαρακτηρων ```city1``` και ```city2``` καθως και αποθηκευση των αποστασεων των πολεων στο ```distance```. Επειτα θα γινει αναζητηση των ```city1``` και ```city2``` στον ```cities``` μεσω της ```find_city_index``` αν δεν βρεθουν τοτε αντιγραφονται στον ```cities``` μεσω της  ```strcpy```. Τελος γινεται ενημερωση της απόστασης μεταξύ των δύο πόλεων. Η διαδικασια αυτη επαναλαμβανεται μεχρι να διαβαστουν ολα τα δεδομενα του αρχειου ```file```.
+
+```
+while (fgets(line, sizeof(line), file)) {
+        char city1[32], city2[32];
+        int distance;
+        sscanf(line, "%[^-]-%[^:]: %d", city1, city2, &distance);
+
+        int index1 = find_city_index(cities, cityCount, city1);
+        if (index1 == -1) {
+            strcpy(cities[cityCount].name, city1);
+            index1 = cityCount++;
+        }
+        int index2 = find_city_index(cities, cityCount, city2);
+        if (index2 == -1) {
+            strcpy(cities[cityCount].name, city2);
+            index2 = cityCount++;
+        }
+
+        distances[index1][index2] = distance;
+        distances[index2][index1] = distance;
+    }
+```
+  Μετα απο την επαναληψη κλεινω το ```file```
+```
+ fclose(file);
+```
+
+  Κανω δυναμικη δεσμευση του πινακα ```best_path``` και αρχικοποιηση του ```best_cost = 0``` ωστε να χρησιμοποιησω αρχικα την συναρτηση ```nearest_neighbor``` και στην συνεχεια την ```print_route``` που εχω προαναφερει παραπανω τις λειτουργιες τους. Τελος κανω αποδεσμευση μνημης και τερματιζω το προγραμμα με κωδικο εξοδου 0.
+
+```
+ free(cities);
+    for (int i = 0; i < MAX_CITIES; i++) {
+        free(distances[i]);
+    }
+    free(distances);
+    free(best_path);
+
+    return 0;
+```
