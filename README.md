@@ -3,7 +3,7 @@ Programming Projects Portfolio
 This repository contains a collection of projects I built during my studies in Computer Science.
 Each folder represents a different assignment or personal project, covering topics from algorithms to operating systems and web development.
 
-📁 Project Highlights
+Project Highlights
 	•	Database Systems Implementation
 Exercises related to file organization, indexing, and database internals.
 	•	Snakegame-2025
@@ -23,7 +23,7 @@ A full Pacman game implementation in Python, including agents and game logic.
 	•	website
 A small front-end project using HTML, CSS, and JavaScript.
 
-🛠️ Skills Demonstrated
+Skills Demonstrated
 	•	C & C++ programming
 	•	Python scripting and larger projects
 	•	C++ for OOP assignments
@@ -33,6 +33,6 @@ A small front-end project using HTML, CSS, and JavaScript.
 	•	HTML, CSS, JavaScript for front-end work
 	•	Version control with Git & GitHub
 
-📌 Purpose
+Purpose
 
 This repository serves as a personal portfolio showcasing my progress as a developer and the variety of projects I have worked on.
