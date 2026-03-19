@@ -1,44 +1,40 @@
-# Το Makefile αυτό βρίσκεται στο root ολόκληρου του project και χρησιμεύει για
-# να κάνουμε εύκολα compile πολλά τμήματα του project μαζί. Το Makefile αυτό
-# καλεί το make στα διάφορα directories ως
-#   $(MAKE) -C <dir> <target>
-# το οποίο είναι ισοδύναμο με το να τρέξουμε make <target> μέσα στο directory <foo>
+# Το Makefile αυτό βρίσκεται στο root ολόκληρου του project
 
-# Ολα τα directories μέσα στο programs directory
-PROGRAMS = $(subst programs/, , $(wildcard programs/*))
+# Paths
+LIB = lib
+INCLUDE = include
 
-# Compile: όλα, προγράμματα, tests
-all: programs tests
+# Raylib paths (homebrew installation)
+RAYLIB_PATH = /opt/homebrew/Cellar/raylib/5.5
+RAYLIB_INCLUDE = $(RAYLIB_PATH)/include
+RAYLIB_LIB = $(RAYLIB_PATH)/lib
 
-# Η παρακάτω γραμμή δημιουργεί ένα target programs-<foo> για οποιοδήποτε <foo>. Η μεταβλητή $* περιέχει το "foo"
-programs-%:
-	$(MAKE) -C programs/$*
+# Compiler settings
+CC = gcc
+CFLAGS = -Wall -Werror -g -I. -I$(INCLUDE) -I$(RAYLIB_INCLUDE)
+LDFLAGS = -L$(RAYLIB_LIB) -lraylib -lm -framework CoreVideo -framework IOKit
 
-programs: $(addprefix programs-, $(PROGRAMS))		# depend στο programs-<foo> για κάθε στοιχείο του PROGRAMS
+# Game files
+GAME_DIR = game
+GAME_OBJS = $(GAME_DIR)/game.o $(GAME_DIR)/state.o $(GAME_DIR)/interface.o
+GAME_EXEC = $(GAME_DIR)/game
 
-tests:
-	$(MAKE) -C tests all
+# Targets
+.PHONY: all game clean run
 
-# Εκτέλεση: όλα, προγράμματα, tests
-run: run-tests run-programs
+all: game
 
-run-programs-%:
-	$(MAKE) -C programs/$* run
+# Build game
+game: $(GAME_EXEC)
 
-run-programs: $(addprefix run-programs-, $(PROGRAMS))
+$(GAME_EXEC): $(GAME_OBJS)
+	$(CC) $(GAME_OBJS) -o $(GAME_EXEC) $(LDFLAGS) $(LIB)/k08_macos.a
 
-run-tests:
-	$(MAKE) -C tests run
+$(GAME_DIR)/%.o: $(GAME_DIR)/%.c
+	$(CC) $(CFLAGS) -c -o $@ $<
 
-# Εκκαθάριση
-clean-programs-%:
-	$(MAKE) -C programs/$* clean
+clean:
+	rm -f $(GAME_OBJS) $(GAME_EXEC)
 
-clean: $(addprefix clean-programs-, $(PROGRAMS))
-	$(MAKE) -C tests clean
-	$(MAKE) -C lib clean
-
-# Δηλώνουμε ότι οι παρακάτω κανόνες είναι εικονικοί, δεν παράγουν αρχεία. Θέλουμε δηλαδή
-# το "make programs" να εκτελεστεί παρόλο που υπάρχει ήδη ένα directory "programs".
-#
-.PHONY: programs tests lib run run-programs run-tests clean
+run: $(GAME_EXEC)
+	cd $(GAME_DIR) && bash -c './game'
