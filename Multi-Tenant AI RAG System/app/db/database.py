@@ -10,11 +10,17 @@ from typing import Generator
 from app.config import settings
 
 # Create SQLAlchemy engine
-engine = create_engine(
-    settings.database_url,
-    poolclass=NullPool,  # Disable connection pooling in development
-    echo=settings.debug,  # Log SQL queries in development
-)
+kwargs = {
+    "echo": settings.debug,  # Log SQL queries in development
+}
+
+# For SQLite, add special connection args
+if settings.database_url.startswith("sqlite"):
+    kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    kwargs["poolclass"] = NullPool
+
+engine = create_engine(settings.database_url, **kwargs)
 
 # Create session factory
 SessionLocal = sessionmaker(

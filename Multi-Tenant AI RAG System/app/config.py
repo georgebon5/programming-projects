@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
     
     # Database
-    database_url: str = "postgresql://postgres:postgres@localhost:5432/multi_tenant_rag"
+    database_url: str = "sqlite:///./test.db"
     
     # JWT & Security
     jwt_secret_key: str = "dev-secret-key-change-in-production"
