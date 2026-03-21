@@ -4,11 +4,11 @@ Represents a user within a specific tenant.
 """
 
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey, Enum
-from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import UUID
-import uuid
 import enum
+import uuid
+
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, String, UniqueConstraint, Uuid
+from sqlalchemy.orm import relationship
 
 from app.db.database import Base
 
@@ -33,9 +33,9 @@ class User(Base):
     """
     __tablename__ = "users"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     tenant_id = Column(
-        UUID(as_uuid=True), 
+        Uuid,
         ForeignKey("tenants.id", ondelete="CASCADE"), 
         nullable=False, 
         index=True
@@ -55,6 +55,10 @@ class User(Base):
     # Relationships
     tenant = relationship("Tenant", back_populates="users")
     documents = relationship("Document", back_populates="uploaded_by_user", foreign_keys="Document.uploaded_by_id")
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "email", name="uq_users_tenant_email"),
+    )
     
     def __repr__(self) -> str:
         return f"<User(id={self.id}, email={self.email}, tenant_id={self.tenant_id})>"

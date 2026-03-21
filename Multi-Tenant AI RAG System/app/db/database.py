@@ -2,10 +2,11 @@
 SQLAlchemy database configuration and session management.
 """
 
-from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy.pool import NullPool
 from typing import Generator
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from app.config import settings
 
@@ -47,4 +48,7 @@ def get_db() -> Generator:
 
 def init_db() -> None:
     """Initialize the database by creating all tables."""
+    # Import models before create_all so SQLAlchemy metadata is populated.
+    from app import models  # noqa: F401
+
     Base.metadata.create_all(bind=engine)

@@ -4,11 +4,11 @@ Represents uploaded PDFs and their processed chunks for RAG.
 """
 
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, ForeignKey, Integer, Text, Enum
-from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import UUID
-import uuid
 import enum
+import uuid
+
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint, Uuid
+from sqlalchemy.orm import relationship
 
 from app.db.database import Base
 
@@ -34,15 +34,15 @@ class Document(Base):
     """
     __tablename__ = "documents"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     tenant_id = Column(
-        UUID(as_uuid=True), 
+        Uuid,
         ForeignKey("tenants.id", ondelete="CASCADE"), 
         nullable=False, 
         index=True
     )
     uploaded_by_id = Column(
-        UUID(as_uuid=True), 
+        Uuid,
         ForeignKey("users.id", ondelete="SET NULL"), 
         nullable=True
     )
@@ -89,15 +89,15 @@ class DocumentChunk(Base):
     """
     __tablename__ = "document_chunks"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     document_id = Column(
-        UUID(as_uuid=True), 
+        Uuid,
         ForeignKey("documents.id", ondelete="CASCADE"), 
         nullable=False, 
         index=True
     )
     tenant_id = Column(
-        UUID(as_uuid=True), 
+        Uuid,
         ForeignKey("tenants.id", ondelete="CASCADE"), 
         nullable=False, 
         index=True
@@ -111,6 +111,10 @@ class DocumentChunk(Base):
     
     # Relationships
     document = relationship("Document", back_populates="chunks")
+
+    __table_args__ = (
+        UniqueConstraint("document_id", "chunk_index", name="uq_document_chunk_index"),
+    )
     
     def __repr__(self) -> str:
         return f"<DocumentChunk(id={self.id}, document_id={self.document_id}, chunk_index={self.chunk_index})>"

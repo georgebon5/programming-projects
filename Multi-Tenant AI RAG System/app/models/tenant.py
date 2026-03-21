@@ -4,10 +4,10 @@ Represents a company/organization using the platform.
 """
 
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, Boolean
-from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import UUID
 import uuid
+
+from sqlalchemy import Boolean, Column, DateTime, String, Uuid
+from sqlalchemy.orm import relationship
 
 from app.db.database import Base
 
@@ -26,7 +26,7 @@ class Tenant(Base):
     """
     __tablename__ = "tenants"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False, unique=True, index=True)
     slug = Column(String(100), nullable=False, unique=True, index=True)
     description = Column(String(1000), nullable=True)
