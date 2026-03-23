@@ -8,7 +8,9 @@ from app.dependencies.auth import get_current_user, require_role
 from app.models.user import User, UserRole
 from app.schemas.document import DocumentListResponse, DocumentResponse
 from app.services.document_service import DocumentService
-from app.utils.exceptions import DocumentNotFound
+from app.services.processing_service import ProcessingService
+from app.services.vector_store import delete_document_chunks
+from app.utils.exceptions import DocumentNotFound, DocumentProcessingError
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
@@ -32,6 +34,30 @@ async def upload_document(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
+    # Auto-process after upload
+    processing = ProcessingService(db)
+    try:
+        doc = processing.process_document(doc.id, current_user.tenant_id)
+    except DocumentProcessingError:
+        pass  # Document is marked FAILED — still return it
+
+    return DocumentResponse.model_validate(doc)
+
+
+@router.post("/{document_id}/process", response_model=DocumentResponse)
+def process_document(
+    document_id: UUID,
+    current_user: User = Depends(require_role({UserRole.ADMIN, UserRole.MEMBER})),
+    db: Session = Depends(get_db),
+) -> DocumentResponse:
+    """Manually trigger (re)processing of a document."""
+    processing = ProcessingService(db)
+    try:
+        doc = processing.process_document(document_id, current_user.tenant_id)
+    except DocumentNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except DocumentProcessingError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     return DocumentResponse.model_validate(doc)
 
 
@@ -72,6 +98,8 @@ def delete_document(
 ) -> None:
     service = DocumentService(db)
     try:
+        # Delete from ChromaDB first
+        delete_document_chunks(current_user.tenant_id, document_id)
         service.delete_document(document_id, current_user.tenant_id)
     except DocumentNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
