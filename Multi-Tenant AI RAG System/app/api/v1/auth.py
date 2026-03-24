@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
@@ -11,13 +11,16 @@ from app.schemas.auth import (
     TokenResponse,
 )
 from app.services.auth_service import AuthService
+from app.utils.rate_limit import limiter
 from app.utils.security import create_access_token
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
 @router.post("/register-tenant-admin", response_model=CurrentUserResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("5/minute")
 def register_tenant_admin(
+    request: Request,
     payload: CreateTenantAdminRequest,
     db: Session = Depends(get_db),
 ) -> CurrentUserResponse:
@@ -38,7 +41,8 @@ def register_tenant_admin(
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
+@limiter.limit("10/minute")
+def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
     service = AuthService(db)
     user = service.authenticate_user(email=payload.email, password=payload.password)
     if user is None:
