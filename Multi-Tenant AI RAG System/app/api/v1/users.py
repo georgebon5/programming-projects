@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 from app.dependencies.auth import get_current_user, require_role
+from app.models.audit_log import AuditAction
 from app.models.user import User, UserRole
 from app.schemas.auth import CurrentUserResponse
 from app.schemas.user import (
@@ -14,6 +15,8 @@ from app.schemas.user import (
     UserListResponse,
     UserResponse,
 )
+from app.services.audit_service import AuditService
+from app.services.tenant_settings_service import QuotaExceeded, TenantSettingsService
 from app.services.user_service import UserService
 from app.utils.exceptions import UserNotFound
 
@@ -44,6 +47,13 @@ def invite_user(
     current_user: User = Depends(require_role({UserRole.ADMIN})),
     db: Session = Depends(get_db),
 ) -> UserResponse:
+    # Check quota
+    quota_svc = TenantSettingsService(db)
+    try:
+        quota_svc.check_user_quota(current_user.tenant_id)
+    except QuotaExceeded as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
+
     service = UserService(db)
     try:
         user = service.invite_user(
@@ -55,6 +65,17 @@ def invite_user(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    audit = AuditService(db)
+    audit.log(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action=AuditAction.USER_INVITE,
+        resource_type="user",
+        resource_id=str(user.id),
+        details={"email": payload.email, "role": payload.role.value if payload.role else "member"},
+    )
+
     return UserResponse.model_validate(user)
 
 
@@ -121,3 +142,12 @@ def delete_user(
         service.delete_user(user_id, current_user.tenant_id)
     except UserNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    audit = AuditService(db)
+    audit.log(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action=AuditAction.USER_DELETE,
+        resource_type="user",
+        resource_id=str(user_id),
+    )

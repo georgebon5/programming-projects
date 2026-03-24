@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 from app.dependencies.auth import get_current_user
+from app.models.audit_log import AuditAction
 from app.models.user import User
 from app.schemas.chat import (
     ChatMessageResponse,
@@ -11,7 +12,9 @@ from app.schemas.chat import (
     ConversationHistoryResponse,
     SourceChunk,
 )
+from app.services.audit_service import AuditService
 from app.services.chat_service import ChatService
+from app.services.tenant_settings_service import QuotaExceeded, TenantSettingsService
 from app.utils.rate_limit import limiter
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
@@ -26,6 +29,13 @@ def chat(
     db: Session = Depends(get_db),
 ) -> ChatResponse:
     """Ask a question over your tenant's documents using RAG."""
+    # Check chat quota
+    quota_svc = TenantSettingsService(db)
+    try:
+        quota_svc.check_chat_quota(current_user.tenant_id)
+    except QuotaExceeded as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
+
     service = ChatService(db)
     result = service.chat(
         tenant_id=current_user.tenant_id,
@@ -34,6 +44,16 @@ def chat(
         conversation_id=payload.conversation_id,
         document_id=payload.document_id,
         n_context_chunks=payload.n_context_chunks,
+    )
+
+    audit = AuditService(db)
+    audit.log(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action=AuditAction.CHAT_QUERY,
+        resource_type="conversation",
+        resource_id=result["conversation_id"],
+        ip_address=request.client.host if request.client else None,
     )
 
     return ChatResponse(

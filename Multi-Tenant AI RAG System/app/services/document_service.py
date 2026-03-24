@@ -73,8 +73,21 @@ class DocumentService:
         tenant_id: UUID,
         skip: int = 0,
         limit: int = 50,
+        status_filter: str | None = None,
+        search: str | None = None,
     ) -> tuple[list[Document], int]:
         query = self.db.query(Document).filter(Document.tenant_id == tenant_id)
+
+        if status_filter:
+            try:
+                status_enum = DocumentStatus(status_filter)
+                query = query.filter(Document.status == status_enum)
+            except ValueError:
+                pass  # Ignore invalid status filter
+
+        if search:
+            query = query.filter(Document.original_filename.ilike(f"%{search}%"))
+
         total = query.count()
         docs = query.order_by(Document.created_at.desc()).offset(skip).limit(limit).all()
         return docs, total

@@ -28,3 +28,10 @@ class DocumentResponse(BaseModel):
 class DocumentListResponse(BaseModel):
     documents: list[DocumentResponse]
     total: int
+
+
+class DocumentSearchResponse(BaseModel):
+    documents: list[DocumentResponse]
+    total: int
+    query: Optional[str] = None
+    status_filter: Optional[str] = None

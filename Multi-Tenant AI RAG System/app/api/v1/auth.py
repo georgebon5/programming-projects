@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 from app.dependencies.auth import get_current_user
+from app.models.audit_log import AuditAction
 from app.models.user import User
 from app.schemas.auth import (
     CreateTenantAdminRequest,
@@ -10,6 +11,7 @@ from app.schemas.auth import (
     LoginRequest,
     TokenResponse,
 )
+from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService
 from app.utils.rate_limit import limiter
 from app.utils.security import create_access_token
@@ -37,6 +39,16 @@ def register_tenant_admin(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
+    audit = AuditService(db)
+    audit.log(
+        tenant_id=user.tenant_id,
+        user_id=user.id,
+        action=AuditAction.REGISTER,
+        resource_type="tenant",
+        details={"tenant_name": payload.tenant_name},
+        ip_address=request.client.host if request.client else None,
+    )
+
     return CurrentUserResponse.model_validate(user)
 
 
@@ -50,6 +62,14 @@ def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
         )
+
+    audit = AuditService(db)
+    audit.log(
+        tenant_id=user.tenant_id,
+        user_id=user.id,
+        action=AuditAction.LOGIN,
+        ip_address=request.client.host if request.client else None,
+    )
 
     token, expires = create_access_token(user_id=user.id, tenant_id=user.tenant_id, role=user.role.value)
     return TokenResponse(access_token=token, expires_in_seconds=expires)

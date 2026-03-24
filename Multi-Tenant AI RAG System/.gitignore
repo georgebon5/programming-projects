@@ -46,3 +46,6 @@ target/
 local_uploads/
 vector_db/
 *.db
+test_uploads/
+test_vector_db/
+test_unit.db

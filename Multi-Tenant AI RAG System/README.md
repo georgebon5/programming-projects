@@ -1,81 +1,68 @@
-# README for Multi-Tenant AI RAG System
+# Multi-Tenant AI RAG System
 
-## Project Overview
-A production-ready SaaS backend where different companies (tenants) can upload PDFs and query them using AI.
+Production-ready FastAPI backend for tenant-isolated document intelligence.
 
-## Tech Stack
-- **Framework**: FastAPI
-- **Database**: PostgreSQL + SQLAlchemy
-- **Authentication**: JWT
-- **AI/RAG**: LangChain + OpenAI
-- **Vector DB**: ChromaDB (or Pinecone)
-- **DevOps**: Docker & Docker Compose
+## Features
+- Multi-tenant architecture with strict tenant data isolation
+- JWT authentication and role-based access control (admin/member/viewer)
+- User lifecycle management (invite, update, deactivate, delete, password change)
+- Document upload, processing, and vector indexing (txt, md, pdf, docx)
+- RAG chat endpoint with conversation history
+- Admin dashboard endpoint for tenant stats and recent activity
+- Rate limiting on sensitive endpoints (auth and chat)
 
-## Project Phases
-1. **Phase 1** ✅ - Project Setup, Docker Compose, SQLAlchemy Models
-2. **Phase 2** - JWT Authentication & RBAC
-3. **Phase 3** - File Upload Handling
-4. **Phase 4** - Document Processing (Chunking, Embeddings)
-5. **Phase 5** - RAG Chat Endpoint
+## Stack
+- FastAPI
+- SQLAlchemy
+- SQLite (dev) / PostgreSQL (docker)
+- ChromaDB
+- OpenAI SDK (with fallback mode if API key is missing)
+- Pytest
 
-## Quick Start
+## Project Status
+1. Phase 1: Project setup and models - complete
+2. Phase 2: Authentication and RBAC - complete
+3. Phase 2.5: User management - complete
+4. Phase 3: Document upload and CRUD - complete
+5. Phase 4: Processing pipeline (extract, chunk, embed) - complete
+6. Phase 5: RAG chat and history - complete
 
-### Prerequisites
-- Docker & Docker Compose
-- Python 3.11+
-
-### Setup
+## Local Run
 ```bash
-# Clone the project
-cd Multi-Tenant AI RAG System
+cd "Multi-Tenant AI RAG System"
 
-# Create .env file
-cp .env.example .env
-
-# Start PostgreSQL
-docker-compose up -d db
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Run migrations (Phase 1.5)
-# alembic upgrade head
-
-# Run the app
-uvicorn app.main:app --reload
+python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Visit http://localhost:8000/docs for API documentation.
+API docs:
+- http://localhost:8000/docs
 
-## Directory Structure
-
-See `STRUCTURE.md` for full directory tree.
-
-## Development
-
-### Code Quality
+## Docker Run (DB)
 ```bash
-# Format code
-black app/
-
-# Lint
-flake8 app/
-
-# Sort imports
-isort app/
+docker-compose up -d db
 ```
 
-### Testing
+## Testing
 ```bash
-pytest tests/
+python3 -m pytest tests/ -q
 ```
+
+Current suite coverage includes auth, users, documents, chat, dashboard, and rate limiting.
+
+## Important Endpoints
+- `POST /api/v1/auth/register-tenant-admin`
+- `POST /api/v1/auth/login`
+- `GET /api/v1/auth/me`
+- `POST /api/v1/users/invite`
+- `POST /api/v1/documents/upload`
+- `POST /api/v1/chat/`
+- `GET /api/v1/chat/{conversation_id}`
+- `GET /api/v1/admin/dashboard/`
 
 ## Security Notes
-- All data is isolated by `tenant_id`
-- JWT tokens contain tenant_id for verification
-- Cascade deletes ensure GDPR compliance
-- Passwords hashed with bcrypt
-
----
-
-**Built for production-ready portfolio impact! 🚀**
+- Tenant isolation is enforced using `tenant_id`
+- JWT contains tenant context and role claims
+- Password hashing with bcrypt
+- Role checks at endpoint level
+- Rate limits reduce auth/chat abuse
