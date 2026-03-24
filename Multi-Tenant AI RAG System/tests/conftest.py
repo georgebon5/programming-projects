@@ -19,6 +19,7 @@ os.environ["VECTOR_DB_PATH"] = "./test_vector_db"
 from app.db.database import Base, get_db
 from app.main import app
 from app.utils.security import create_access_token
+import app.db.database as _db_mod
 
 # In-memory SQLite for tests
 TEST_ENGINE = create_engine(
@@ -38,6 +39,16 @@ def _override_get_db():
 
 
 app.dependency_overrides[get_db] = _override_get_db
+
+# Override session factory so background tasks also use the test DB
+_original_get_session_factory = _db_mod.get_session_factory
+
+
+def _test_get_session_factory():
+    return TestSession
+
+
+_db_mod.get_session_factory = _test_get_session_factory
 
 
 @pytest.fixture(autouse=True)

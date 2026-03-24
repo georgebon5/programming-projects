@@ -34,6 +34,11 @@ SessionLocal = sessionmaker(
 Base = declarative_base()
 
 
+def get_session_factory() -> sessionmaker:
+    """Return the current session factory. Overridable for tests."""
+    return SessionLocal
+
+
 def get_db() -> Generator:
     """
     Dependency for getting database session.

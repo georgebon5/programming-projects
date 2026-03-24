@@ -1,9 +1,10 @@
+import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.db.database import get_db
+from app.db.database import get_db, get_session_factory
 from app.dependencies.auth import get_current_user, require_role
 from app.models.audit_log import AuditAction
 from app.models.user import User, UserRole
@@ -15,12 +16,27 @@ from app.services.tenant_settings_service import QuotaExceeded, TenantSettingsSe
 from app.services.vector_store import delete_document_chunks
 from app.utils.exceptions import DocumentNotFound, DocumentProcessingError
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/documents", tags=["Documents"])
+
+
+def _process_document_background(document_id: UUID, tenant_id: UUID) -> None:
+    """Background task: process a document in its own DB session."""
+    db = get_session_factory()()
+    try:
+        processing = ProcessingService(db)
+        processing.process_document(document_id, tenant_id)
+    except Exception as exc:
+        logger.error("Background processing failed for document %s: %s", document_id, exc)
+    finally:
+        db.close()
 
 
 @router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 async def upload_document(
     file: UploadFile,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(require_role({UserRole.ADMIN, UserRole.MEMBER})),
     db: Session = Depends(get_db),
 ) -> DocumentResponse:
@@ -46,12 +62,8 @@ async def upload_document(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-    # Auto-process after upload
-    processing = ProcessingService(db)
-    try:
-        doc = processing.process_document(doc.id, current_user.tenant_id)
-    except DocumentProcessingError:
-        pass  # Document is marked FAILED — still return it
+    # Schedule processing as background task (non-blocking)
+    background_tasks.add_task(_process_document_background, doc.id, current_user.tenant_id)
 
     audit = AuditService(db)
     audit.log(

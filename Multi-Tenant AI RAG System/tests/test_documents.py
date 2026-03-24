@@ -23,8 +23,19 @@ class TestUploadDocument:
         assert resp.status_code == 201
         data = resp.json()
         assert data["original_filename"] == "test.txt"
-        assert data["status"] == "completed"
-        assert data["total_chunks"] >= 1
+        # Upload now returns immediately; processing runs in background
+        assert data["status"] == "uploaded"
+
+        # Background task runs synchronously in TestClient, so fetching
+        # the document should show it as completed.
+        doc_id = data["id"]
+        get_resp = client.get(
+            f"/api/v1/documents/{doc_id}",
+            headers=auth_header(token),
+        )
+        assert get_resp.status_code == 200
+        assert get_resp.json()["status"] == "completed"
+        assert get_resp.json()["total_chunks"] >= 1
 
     def test_upload_unsupported_type(self, client):
         _, token = register_tenant(client, "doc-bad")
