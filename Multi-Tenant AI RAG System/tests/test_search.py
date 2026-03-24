@@ -89,4 +89,4 @@ class TestEnhancedHealth:
         assert data["status"] == "healthy"
         assert "uptime_seconds" in data
         assert "python_version" in data
-        assert data["version"] == "0.2.0"
+        assert data["version"] == "0.3.0"

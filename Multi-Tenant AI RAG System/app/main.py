@@ -18,9 +18,12 @@ from app.api.v1.chat import router as chat_router
 from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.audit_logs import router as audit_logs_router
 from app.api.v1.settings import router as settings_router
+from app.api.v1.api_keys import router as api_keys_router
+from app.api.v1.export import router as export_router
 from app.config import settings
 from app.utils.rate_limit import limiter
 from app.utils.logging import setup_logging
+from app.utils.middleware import RequestIDMiddleware
 
 # Configure structured logging before anything else
 setup_logging()
@@ -34,7 +37,7 @@ init_db()
 app = FastAPI(
     title="Multi-Tenant AI RAG System",
     description="Production-ready backend for tenant-specific document AI queries",
-    version="0.2.0",
+    version="0.3.0",
     docs_url="/docs" if settings.debug else None,
     redoc_url="/redoc" if settings.debug else None,
 )
@@ -42,6 +45,9 @@ app = FastAPI(
 # Rate limiting
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Request ID tracing
+app.add_middleware(RequestIDMiddleware)
 
 # Add CORS middleware
 app.add_middleware(
@@ -59,6 +65,8 @@ app.include_router(chat_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")
 app.include_router(audit_logs_router, prefix="/api/v1")
 app.include_router(settings_router, prefix="/api/v1")
+app.include_router(api_keys_router, prefix="/api/v1")
+app.include_router(export_router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["Health"])
@@ -68,7 +76,7 @@ async def health_check() -> dict:
     return {
         "status": "healthy",
         "environment": settings.environment,
-        "version": "0.2.0",
+        "version": "0.3.0",
         "uptime_seconds": round(uptime, 1),
         "python_version": platform.python_version(),
     }
@@ -79,7 +87,7 @@ async def root() -> dict:
     """Root endpoint."""
     return {
         "message": "Multi-Tenant AI RAG System API",
-        "version": "0.2.0",
+        "version": "0.3.0",
         "docs": "/docs" if settings.debug else "Not available in production"
     }
 
