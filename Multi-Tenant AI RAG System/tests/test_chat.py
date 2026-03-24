@@ -61,7 +61,7 @@ class TestChat:
             "/api/v1/chat/",
             json={"question": "test"},
         )
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
     def test_chat_empty_question(self, client):
         token = _setup_tenant_with_doc(client)

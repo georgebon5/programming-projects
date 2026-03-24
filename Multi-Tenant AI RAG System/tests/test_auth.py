@@ -90,7 +90,7 @@ class TestMe:
 
     def test_me_no_token(self, client):
         resp = client.get("/api/v1/auth/me")
-        assert resp.status_code == 403  # HTTPBearer auto_error
+        assert resp.status_code == 401
 
     def test_me_invalid_token(self, client):
         resp = client.get(

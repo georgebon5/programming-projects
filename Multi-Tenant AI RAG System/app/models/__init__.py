@@ -8,6 +8,7 @@ from app.models.document import Document, DocumentChunk, DocumentStatus
 from app.models.chat import ChatMessage, MessageRole
 from app.models.audit_log import AuditLog, AuditAction
 from app.models.tenant_settings import TenantSettings
+from app.models.api_key import APIKey
 
 __all__ = [
     "Tenant",
@@ -21,4 +22,5 @@ __all__ = [
     "AuditLog",
     "AuditAction",
     "TenantSettings",
+    "APIKey",
 ]
