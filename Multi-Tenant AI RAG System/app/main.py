@@ -20,6 +20,10 @@ from app.api.v1.audit_logs import router as audit_logs_router
 from app.api.v1.settings import router as settings_router
 from app.config import settings
 from app.utils.rate_limit import limiter
+from app.utils.logging import setup_logging
+
+# Configure structured logging before anything else
+setup_logging()
 
 _start_time = time.time()
 
