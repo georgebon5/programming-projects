@@ -8,9 +8,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.dependencies.auth import get_current_user
+from app.dependencies.auth import get_current_user, require_role
 from app.models.audit_log import AuditAction
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.api_key import APIKeyCreatedResponse, APIKeyResponse, CreateAPIKeyRequest
 from app.services.api_key_service import APIKeyService
 from app.services.audit_service import AuditService
@@ -78,3 +78,14 @@ def revoke_api_key(
         resource_id=str(key_id),
         details={"action": "revoke"},
     )
+
+
+@router.post("/cleanup", tags=["API Keys"])
+def cleanup_expired_keys(
+    current_user: User = Depends(require_role({UserRole.ADMIN})),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Deactivate all expired API keys. Admin only."""
+    svc = APIKeyService(db)
+    count = svc.cleanup_expired_keys()
+    return {"deactivated_count": count}

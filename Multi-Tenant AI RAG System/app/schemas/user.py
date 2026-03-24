@@ -1,11 +1,9 @@
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.models.user import UserRole
-
 
 # --- Requests ---
 
@@ -17,9 +15,9 @@ class InviteUserRequest(BaseModel):
 
 
 class UpdateUserRequest(BaseModel):
-    username: Optional[str] = Field(default=None, min_length=3, max_length=150)
-    role: Optional[UserRole] = None
-    is_active: Optional[bool] = None
+    username: str | None = Field(default=None, min_length=3, max_length=150)
+    role: UserRole | None = None
+    is_active: bool | None = None
 
 
 class ChangePasswordRequest(BaseModel):
@@ -39,7 +37,7 @@ class UserResponse(BaseModel):
     role: UserRole
     is_active: bool
     created_at: datetime
-    last_login: Optional[datetime] = None
+    last_login: datetime | None = None
 
 
 class UserListResponse(BaseModel):

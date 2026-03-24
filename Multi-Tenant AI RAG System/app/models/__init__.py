@@ -2,13 +2,13 @@
 Models module - contains all SQLAlchemy ORM models.
 """
 
-from app.models.tenant import Tenant
-from app.models.user import User, UserRole
-from app.models.document import Document, DocumentChunk, DocumentStatus
-from app.models.chat import ChatMessage, MessageRole
-from app.models.audit_log import AuditLog, AuditAction
-from app.models.tenant_settings import TenantSettings
 from app.models.api_key import APIKey
+from app.models.audit_log import AuditAction, AuditLog
+from app.models.chat import ChatMessage, MessageRole
+from app.models.document import Document, DocumentChunk, DocumentStatus
+from app.models.tenant import Tenant
+from app.models.tenant_settings import TenantSettings
+from app.models.user import User, UserRole
 
 __all__ = [
     "Tenant",

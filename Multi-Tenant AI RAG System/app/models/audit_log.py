@@ -2,12 +2,11 @@
 AuditLog SQLAlchemy model — tracks user actions for security and compliance.
 """
 
-from datetime import datetime
 import enum
 import uuid
+from datetime import datetime
 
 from sqlalchemy import Column, DateTime, Enum, ForeignKey, String, Text, Uuid
-from sqlalchemy.orm import relationship
 
 from app.db.database import Base
 
@@ -32,6 +31,10 @@ class AuditAction(str, enum.Enum):
 
     # Chat
     CHAT_QUERY = "chat_query"
+    CHAT_DELETE = "chat_delete"
+
+    # Account
+    DATA_EXPORT = "data_export"
 
     # Admin
     SETTINGS_UPDATE = "settings_update"

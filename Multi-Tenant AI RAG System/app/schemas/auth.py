@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
@@ -15,7 +14,7 @@ class LoginRequest(BaseModel):
 class CreateTenantAdminRequest(BaseModel):
     tenant_name: str = Field(min_length=2, max_length=255)
     tenant_slug: str = Field(min_length=2, max_length=100, pattern=r"^[a-z0-9-]+$")
-    tenant_description: Optional[str] = Field(default=None, max_length=1000)
+    tenant_description: str | None = Field(default=None, max_length=1000)
 
     username: str = Field(min_length=3, max_length=150)
     email: EmailStr
@@ -24,8 +23,13 @@ class CreateTenantAdminRequest(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
+    refresh_token: str | None = None
     token_type: str = "bearer"
     expires_in_seconds: int
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
 
 
 class CurrentUserResponse(BaseModel):

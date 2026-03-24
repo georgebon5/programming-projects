@@ -57,13 +57,13 @@ class TestUploadDocument:
             json={
                 "username": "viewer",
                 "email": "viewer@doc-perm.com",
-                "password": "password1234",
+                "password": "Password1234!",
                 "role": "viewer",
             },
         )
         login = client.post(
             "/api/v1/auth/login",
-            json={"email": "viewer@doc-perm.com", "password": "password1234"},
+            json={"email": "viewer@doc-perm.com", "password": "Password1234!"},
         )
         viewer_token = login.json()["access_token"]
         resp = _upload_txt(client, viewer_token)

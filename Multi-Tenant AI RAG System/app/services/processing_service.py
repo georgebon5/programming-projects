@@ -66,7 +66,7 @@ class ProcessingService:
             )
 
             # 4. Store chunks in SQL
-            for i, (chunk_str, emb_id) in enumerate(zip(chunks, embedding_ids)):
+            for i, (chunk_str, emb_id) in enumerate(zip(chunks, embedding_ids, strict=True)):
                 db_chunk = DocumentChunk(
                     document_id=document_id,
                     tenant_id=tenant_id,

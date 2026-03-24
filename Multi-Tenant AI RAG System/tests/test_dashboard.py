@@ -42,14 +42,14 @@ class TestDashboard:
             json={
                 "username": "viewer",
                 "email": "viewer@dash-view.com",
-                "password": "password1234",
+                "password": "Password1234!",
                 "role": "viewer",
             },
         )
 
         login = client.post(
             "/api/v1/auth/login",
-            json={"email": "viewer@dash-view.com", "password": "password1234"},
+            json={"email": "viewer@dash-view.com", "password": "Password1234!"},
         )
         viewer_token = login.json()["access_token"]
 

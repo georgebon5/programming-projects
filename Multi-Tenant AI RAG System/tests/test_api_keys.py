@@ -2,7 +2,6 @@
 Tests for API key management and API key authentication.
 """
 
-import io
 
 from tests.conftest import auth_header, register_tenant
 

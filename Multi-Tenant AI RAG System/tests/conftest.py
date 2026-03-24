@@ -16,10 +16,9 @@ os.environ["DEBUG"] = "true"
 os.environ["UPLOAD_DIR"] = "./test_uploads"
 os.environ["VECTOR_DB_PATH"] = "./test_vector_db"
 
+import app.db.database as _db_mod
 from app.db.database import Base, get_db
 from app.main import app
-from app.utils.security import create_access_token
-import app.db.database as _db_mod
 
 # In-memory SQLite for tests
 TEST_ENGINE = create_engine(
@@ -86,7 +85,7 @@ def register_tenant(client: TestClient, slug: str | None = None):
         "tenant_slug": slug,
         "username": "admin",
         "email": f"admin@{slug}.com",
-        "password": "password1234",
+        "password": "Password1234!",
     }
     resp = client.post("/api/v1/auth/register-tenant-admin", json=payload)
     assert resp.status_code == 201, resp.text

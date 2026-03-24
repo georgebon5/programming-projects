@@ -71,13 +71,13 @@ class TestAuditLogs:
             json={
                 "username": "viewer",
                 "email": "viewer@audit-perm.com",
-                "password": "password1234",
+                "password": "Password1234!",
                 "role": "viewer",
             },
         )
         login = client.post(
             "/api/v1/auth/login",
-            json={"email": "viewer@audit-perm.com", "password": "password1234"},
+            json={"email": "viewer@audit-perm.com", "password": "Password1234!"},
         )
         viewer_token = login.json()["access_token"]
         resp = client.get(

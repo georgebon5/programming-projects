@@ -21,7 +21,7 @@ class TestRegisterTenantAdmin:
                 "tenant_slug": "dup",
                 "username": "u2",
                 "email": "u2@dup.com",
-                "password": "password1234",
+                "password": "Password1234!",
             },
         )
         assert resp.status_code in (400, 422)
@@ -34,7 +34,7 @@ class TestRegisterTenantAdmin:
                 "tenant_slug": "Bad Slug!",
                 "username": "u",
                 "email": "u@bad.com",
-                "password": "password1234",
+                "password": "Password1234!",
             },
         )
         assert resp.status_code == 422  # Pydantic validation
@@ -58,7 +58,7 @@ class TestLogin:
         register_tenant(client, "login-ok")
         resp = client.post(
             "/api/v1/auth/login",
-            json={"email": "admin@login-ok.com", "password": "password1234"},
+            json={"email": "admin@login-ok.com", "password": "Password1234!"},
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -76,7 +76,7 @@ class TestLogin:
     def test_login_unknown_email(self, client):
         resp = client.post(
             "/api/v1/auth/login",
-            json={"email": "nobody@nowhere.com", "password": "password1234"},
+            json={"email": "nobody@nowhere.com", "password": "Password1234!"},
         )
         assert resp.status_code == 401
 

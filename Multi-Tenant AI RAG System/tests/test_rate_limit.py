@@ -20,7 +20,7 @@ class TestRateLimiting:
                     "tenant_slug": f"rate-{i}",
                     "username": "admin",
                     "email": f"admin{i}@rate.com",
-                    "password": "password1234",
+                    "password": "Password1234!",
                 },
             )
             assert resp.status_code == 201
@@ -32,7 +32,7 @@ class TestRateLimiting:
                 "tenant_slug": "rate-blocked",
                 "username": "admin",
                 "email": "blocked@rate.com",
-                "password": "password1234",
+                "password": "Password1234!",
             },
         )
         assert blocked.status_code == 429
@@ -46,12 +46,12 @@ class TestRateLimiting:
         for _ in range(10):
             resp = client.post(
                 "/api/v1/auth/login",
-                json={"email": "admin@rate-login.com", "password": "password1234"},
+                json={"email": "admin@rate-login.com", "password": "Password1234!"},
             )
             assert resp.status_code == 200
 
         blocked = client.post(
             "/api/v1/auth/login",
-            json={"email": "admin@rate-login.com", "password": "password1234"},
+            json={"email": "admin@rate-login.com", "password": "Password1234!"},
         )
         assert blocked.status_code == 429

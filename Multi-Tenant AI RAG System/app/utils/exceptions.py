@@ -2,6 +2,8 @@
 Custom exceptions for the application.
 """
 
+from fastapi import HTTPException, status
+
 
 class CustomException(Exception):
     """Base exception for the application."""
@@ -35,4 +37,14 @@ class InvalidTenantAccess(CustomException):
 
 class DocumentProcessingError(CustomException):
     """Raised when document processing fails."""
+    pass
+
+
+class AccountLockedError(CustomException):
+    """Raised when an account is temporarily locked due to failed login attempts."""
+    pass
+
+
+class PasswordValidationError(CustomException):
+    """Raised when a password does not meet complexity requirements."""
     pass

@@ -8,7 +8,7 @@ from app.db.database import get_db, get_session_factory
 from app.dependencies.auth import get_current_user, require_role
 from app.models.audit_log import AuditAction
 from app.models.user import User, UserRole
-from app.schemas.document import DocumentListResponse, DocumentResponse, DocumentSearchResponse
+from app.schemas.document import DocumentListResponse, DocumentResponse
 from app.services.audit_service import AuditService
 from app.services.document_service import DocumentService
 from app.services.processing_service import ProcessingService

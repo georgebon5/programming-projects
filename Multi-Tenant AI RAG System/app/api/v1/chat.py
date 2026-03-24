@@ -10,18 +10,21 @@ from app.schemas.chat import (
     ChatRequest,
     ChatResponse,
     ConversationHistoryResponse,
+    ConversationListResponse,
+    ConversationSummary,
     SourceChunk,
 )
 from app.services.audit_service import AuditService
 from app.services.chat_service import ChatService
 from app.services.tenant_settings_service import QuotaExceeded, TenantSettingsService
 from app.utils.rate_limit import limiter
+from app.config import settings as app_settings
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
 
 @router.post("/", response_model=ChatResponse)
-@limiter.limit("20/minute")
+@limiter.limit(lambda: app_settings.rate_limit_chat)
 def chat(
     request: Request,
     payload: ChatRequest,
@@ -82,4 +85,47 @@ def get_conversation(
     return ConversationHistoryResponse(
         conversation_id=conversation_id,
         messages=[ChatMessageResponse.model_validate(m) for m in messages],
+    )
+
+
+@router.get("/", response_model=ConversationListResponse)
+def list_conversations(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ConversationListResponse:
+    """List all conversations for the current user."""
+    service = ChatService(db)
+    conversations = service.list_conversations(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+    )
+    return ConversationListResponse(
+        conversations=[ConversationSummary(**c) for c in conversations],
+        total=len(conversations),
+    )
+
+
+@router.delete("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_conversation(
+    conversation_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """Delete an entire conversation (GDPR right to erasure)."""
+    service = ChatService(db)
+    count = service.delete_conversation(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        conversation_id=conversation_id,
+    )
+    if count == 0:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+    audit = AuditService(db)
+    audit.log(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action=AuditAction.CHAT_DELETE,
+        resource_type="conversation",
+        resource_id=conversation_id,
     )

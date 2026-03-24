@@ -98,7 +98,7 @@ class TestQuotaEnforcement:
             json={
                 "username": "extra",
                 "email": "extra@quota-user.com",
-                "password": "password1234",
+                "password": "Password1234!",
             },
         )
         assert resp.status_code == 429

@@ -3,7 +3,6 @@ Schemas for API key endpoints.
 """
 
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -11,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class CreateAPIKeyRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
-    expires_at: Optional[datetime] = None
+    expires_at: datetime | None = None
 
 
 class APIKeyResponse(BaseModel):
@@ -21,8 +20,8 @@ class APIKeyResponse(BaseModel):
     name: str
     key_prefix: str
     is_active: bool
-    last_used_at: Optional[datetime]
-    expires_at: Optional[datetime]
+    last_used_at: datetime | None
+    expires_at: datetime | None
     created_at: datetime
 
 

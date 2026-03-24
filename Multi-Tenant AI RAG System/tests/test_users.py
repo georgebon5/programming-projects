@@ -14,7 +14,7 @@ class TestInviteUser:
             json={
                 "username": "member1",
                 "email": "member1@inv.com",
-                "password": "password1234",
+                "password": "Password1234!",
                 "role": "member",
             },
         )
@@ -29,7 +29,7 @@ class TestInviteUser:
             json={
                 "username": "m1",
                 "email": "same@inv-dup.com",
-                "password": "password1234",
+                "password": "Password1234!",
             },
         )
         resp = client.post(
@@ -38,7 +38,7 @@ class TestInviteUser:
             json={
                 "username": "m2",
                 "email": "same@inv-dup.com",
-                "password": "password1234",
+                "password": "Password1234!",
             },
         )
         assert resp.status_code in (400, 422)
@@ -53,7 +53,7 @@ class TestInviteUser:
             json={
                 "username": "viewer",
                 "email": "viewer@inv-perm.com",
-                "password": "password1234",
+                "password": "Password1234!",
                 "role": "viewer",
             },
         )
@@ -62,7 +62,7 @@ class TestInviteUser:
         # Login as viewer
         login = client.post(
             "/api/v1/auth/login",
-            json={"email": "viewer@inv-perm.com", "password": "password1234"},
+            json={"email": "viewer@inv-perm.com", "password": "Password1234!"},
         )
         viewer_token = login.json()["access_token"]
 
@@ -73,7 +73,7 @@ class TestInviteUser:
             json={
                 "username": "hack",
                 "email": "hack@inv-perm.com",
-                "password": "password1234",
+                "password": "Password1234!",
             },
         )
         assert resp.status_code == 403
@@ -89,7 +89,7 @@ class TestListUsers:
             json={
                 "username": "extra",
                 "email": "extra@lst.com",
-                "password": "password1234",
+                "password": "Password1234!",
             },
         )
         resp = client.get("/api/v1/users/", headers=auth_header(token))
@@ -107,7 +107,7 @@ class TestUpdateUser:
             json={
                 "username": "mem",
                 "email": "mem@upd.com",
-                "password": "password1234",
+                "password": "Password1234!",
             },
         )
         user_id = invite.json()["id"]
@@ -129,7 +129,7 @@ class TestUpdateUser:
             json={
                 "username": "victim",
                 "email": "victim@deact.com",
-                "password": "password1234",
+                "password": "Password1234!",
             },
         )
         user_id = invite.json()["id"]
@@ -152,7 +152,7 @@ class TestDeleteUser:
             json={
                 "username": "delme",
                 "email": "delme@del.com",
-                "password": "password1234",
+                "password": "Password1234!",
             },
         )
         user_id = invite.json()["id"]
@@ -176,8 +176,8 @@ class TestChangePassword:
             "/api/v1/users/me/password",
             headers=auth_header(token),
             json={
-                "current_password": "password1234",
-                "new_password": "newpassword1234",
+                "current_password": "Password1234!",
+                "new_password": "NewPassword1234!",
             },
         )
         assert resp.status_code == 204
@@ -185,14 +185,14 @@ class TestChangePassword:
         # Verify old password no longer works
         resp = client.post(
             "/api/v1/auth/login",
-            json={"email": "admin@pw.com", "password": "password1234"},
+            json={"email": "admin@pw.com", "password": "Password1234!"},
         )
         assert resp.status_code == 401
 
         # Verify new password works
         resp = client.post(
             "/api/v1/auth/login",
-            json={"email": "admin@pw.com", "password": "newpassword1234"},
+            json={"email": "admin@pw.com", "password": "NewPassword1234!"},
         )
         assert resp.status_code == 200
 
@@ -203,7 +203,7 @@ class TestChangePassword:
             headers=auth_header(token),
             json={
                 "current_password": "wrongcurrentpw",
-                "new_password": "newpassword1234",
+                "new_password": "NewPassword1234!",
             },
         )
         assert resp.status_code == 400

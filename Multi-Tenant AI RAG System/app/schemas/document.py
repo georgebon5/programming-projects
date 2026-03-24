@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -12,17 +11,17 @@ class DocumentResponse(BaseModel):
 
     id: UUID
     tenant_id: UUID
-    uploaded_by_id: Optional[UUID] = None
+    uploaded_by_id: UUID | None = None
     filename: str
     original_filename: str
     file_size_bytes: int
     mime_type: str
     status: DocumentStatus
-    error_message: Optional[str] = None
-    content_preview: Optional[str] = None
+    error_message: str | None = None
+    content_preview: str | None = None
     total_chunks: int
     created_at: datetime
-    processed_at: Optional[datetime] = None
+    processed_at: datetime | None = None
 
 
 class DocumentListResponse(BaseModel):
@@ -33,5 +32,5 @@ class DocumentListResponse(BaseModel):
 class DocumentSearchResponse(BaseModel):
     documents: list[DocumentResponse]
     total: int
-    query: Optional[str] = None
-    status_filter: Optional[str] = None
+    query: str | None = None
+    status_filter: str | None = None

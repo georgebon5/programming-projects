@@ -124,3 +124,99 @@ class TestChatTenantIsolation:
             headers=auth_header(token_b),
         )
         assert resp.status_code == 404
+
+
+class TestConversationList:
+    def test_list_conversations(self, client):
+        token = _setup_tenant_with_doc(client)
+        # Create two conversations
+        r1 = client.post(
+            "/api/v1/chat/",
+            headers=auth_header(token),
+            json={"question": "What is AI?"},
+        )
+        r2 = client.post(
+            "/api/v1/chat/",
+            headers=auth_header(token),
+            json={"question": "What is ML?"},
+        )
+        conv_id1 = r1.json()["conversation_id"]
+        conv_id2 = r2.json()["conversation_id"]
+
+        resp = client.get("/api/v1/chat/", headers=auth_header(token))
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] >= 2
+        conv_ids = [c["conversation_id"] for c in data["conversations"]]
+        assert conv_id1 in conv_ids
+        assert conv_id2 in conv_ids
+        # Each conversation should have preview
+        for c in data["conversations"]:
+            assert "preview" in c
+            assert "message_count" in c
+
+    def test_list_conversations_empty(self, client):
+        _, token = register_tenant(client)
+        resp = client.get("/api/v1/chat/", headers=auth_header(token))
+        assert resp.status_code == 200
+        assert resp.json()["total"] == 0
+        assert resp.json()["conversations"] == []
+
+
+class TestConversationDelete:
+    def test_delete_conversation(self, client):
+        token = _setup_tenant_with_doc(client)
+        r = client.post(
+            "/api/v1/chat/",
+            headers=auth_header(token),
+            json={"question": "What is AI?"},
+        )
+        conv_id = r.json()["conversation_id"]
+
+        # Delete
+        resp = client.delete(
+            f"/api/v1/chat/{conv_id}",
+            headers=auth_header(token),
+        )
+        assert resp.status_code == 204
+
+        # Confirm deleted
+        resp2 = client.get(
+            f"/api/v1/chat/{conv_id}",
+            headers=auth_header(token),
+        )
+        assert resp2.status_code == 404
+
+    def test_delete_nonexistent_conversation(self, client):
+        _, token = register_tenant(client)
+        resp = client.delete(
+            "/api/v1/chat/nonexistent-conv",
+            headers=auth_header(token),
+        )
+        assert resp.status_code == 404
+
+    def test_delete_conversation_tenant_isolation(self, client):
+        """Tenant B cannot delete Tenant A's conversation."""
+        token_a = _setup_tenant_with_doc(client)
+        _, token_b = register_tenant(client)
+
+        r = client.post(
+            "/api/v1/chat/",
+            headers=auth_header(token_a),
+            json={"question": "Test question"},
+        )
+        conv_id = r.json()["conversation_id"]
+
+        # Tenant B tries to delete — should 404
+        resp = client.delete(
+            f"/api/v1/chat/{conv_id}",
+            headers=auth_header(token_b),
+        )
+        assert resp.status_code == 404
+
+        # Confirm still exists for Tenant A
+        resp2 = client.get(
+            f"/api/v1/chat/{conv_id}",
+            headers=auth_header(token_a),
+        )
+        assert resp2.status_code == 200

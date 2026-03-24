@@ -2,7 +2,7 @@
 Tenant settings service — manage quotas and enforce limits.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import func

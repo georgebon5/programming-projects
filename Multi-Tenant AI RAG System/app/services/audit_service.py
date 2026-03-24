@@ -5,7 +5,6 @@ Audit logging service — records user actions for security and compliance.
 import json
 from uuid import UUID
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditAction, AuditLog

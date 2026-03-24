@@ -81,12 +81,21 @@ class TestDocumentSearch:
 
 
 class TestEnhancedHealth:
-    def test_health_fields(self, client):
-        """Health check returns enhanced fields."""
+    def test_health_liveness(self, client):
+        """Liveness probe returns minimal healthy response."""
         resp = client.get("/health")
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "healthy"
+        assert data["version"] == "0.3.0"
+
+    def test_readiness_probe(self, client):
+        """Readiness probe checks DB and returns system info."""
+        resp = client.get("/ready")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ready"
+        assert data["checks"]["database"] == "ok"
         assert "uptime_seconds" in data
         assert "python_version" in data
         assert data["version"] == "0.3.0"

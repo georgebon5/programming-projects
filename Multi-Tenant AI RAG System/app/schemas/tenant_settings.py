@@ -2,7 +2,6 @@
 Tenant settings schemas — quotas and feature flags.
 """
 
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -19,12 +18,12 @@ class TenantSettingsResponse(BaseModel):
 
 
 class UpdateTenantSettingsRequest(BaseModel):
-    max_users: Optional[int] = Field(None, ge=0, le=10000)
-    max_documents: Optional[int] = Field(None, ge=0, le=100000)
-    max_storage_mb: Optional[int] = Field(None, ge=0, le=100000)
-    max_chat_messages_per_day: Optional[int] = Field(None, ge=0, le=100000)
-    chat_enabled: Optional[bool] = None
-    file_upload_enabled: Optional[bool] = None
+    max_users: int | None = Field(None, ge=0, le=10000)
+    max_documents: int | None = Field(None, ge=0, le=100000)
+    max_storage_mb: int | None = Field(None, ge=0, le=100000)
+    max_chat_messages_per_day: int | None = Field(None, ge=0, le=100000)
+    chat_enabled: bool | None = None
+    file_upload_enabled: bool | None = None
 
 
 class UsageLimitDetail(BaseModel):

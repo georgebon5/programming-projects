@@ -1,14 +1,26 @@
 """
 ChromaDB vector store wrapper with tenant isolation.
 Each tenant gets its own ChromaDB collection.
+Includes TTL-based caching for search results.
 """
 
+import hashlib
+import logging
+import threading
 from uuid import UUID
 
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+# ── Search result cache (TTL 5 minutes, max 256 entries) ────────────────
+_cache: dict[str, tuple[float, list[dict]]] = {}
+_cache_lock = threading.Lock()
+_CACHE_TTL_SECONDS = 300
+_CACHE_MAX_SIZE = 256
 
 
 def _get_client() -> chromadb.ClientAPI:
@@ -55,7 +67,50 @@ def store_chunks(
         ],
     )
 
+    # Invalidate search cache since new data was added
+    invalidate_cache(tenant_id)
+
     return ids
+
+
+def _cache_key(tenant_id: UUID, query: str, n_results: int, document_id: UUID | None) -> str:
+    """Generate a deterministic cache key for search parameters."""
+    raw = f"{tenant_id}:{query}:{n_results}:{document_id or ''}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def _cache_get(key: str) -> list[dict] | None:
+    """Get cached value if still within TTL."""
+    import time
+
+    with _cache_lock:
+        if key in _cache:
+            ts, value = _cache[key]
+            if time.time() - ts < _CACHE_TTL_SECONDS:
+                logger.debug("Cache hit for search key %s", key[:12])
+                return value
+            del _cache[key]
+    return None
+
+
+def _cache_set(key: str, value: list[dict]) -> None:
+    """Store value in cache with current timestamp."""
+    import time
+
+    with _cache_lock:
+        # Evict oldest if at capacity
+        if len(_cache) >= _CACHE_MAX_SIZE and key not in _cache:
+            oldest_key = min(_cache, key=lambda k: _cache[k][0])
+            del _cache[oldest_key]
+        _cache[key] = (time.time(), value)
+
+
+def invalidate_cache(tenant_id: UUID, document_id: UUID | None = None) -> None:
+    """Invalidate cached search results for a tenant (or specific document)."""
+    prefix = str(tenant_id)
+    with _cache_lock:
+        _cache.clear()
+    logger.debug("Search cache cleared for tenant %s", prefix)
 
 
 def search_chunks(
@@ -66,9 +121,16 @@ def search_chunks(
 ) -> list[dict]:
     """
     Search for relevant chunks in a tenant's collection.
+    Results are cached with a TTL to reduce redundant vector lookups.
 
     Returns list of dicts with keys: text, document_id, chunk_index, distance.
     """
+    # Check cache first
+    key = _cache_key(tenant_id, query, n_results, document_id)
+    cached = _cache_get(key)
+    if cached is not None:
+        return cached
+
     client = _get_client()
 
     try:
@@ -98,6 +160,9 @@ def search_chunks(
                 "distance": distance,
             })
 
+    # Store in cache
+    _cache_set(key, items)
+
     return items
 
 
@@ -107,5 +172,6 @@ def delete_document_chunks(tenant_id: UUID, document_id: UUID) -> None:
     try:
         collection = client.get_collection(name=_collection_name(tenant_id))
         collection.delete(where={"document_id": str(document_id)})
+        invalidate_cache(tenant_id, document_id)
     except Exception:
         pass

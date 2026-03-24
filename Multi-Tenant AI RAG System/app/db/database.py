@@ -2,11 +2,11 @@
 SQLAlchemy database configuration and session management.
 """
 
-from typing import Generator
+from collections.abc import Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
-from sqlalchemy.pool import NullPool
+from sqlalchemy.pool import NullPool, QueuePool
 
 from app.config import settings
 
@@ -15,11 +15,17 @@ kwargs = {
     "echo": settings.debug,  # Log SQL queries in development
 }
 
-# For SQLite, add special connection args
+# For SQLite, add special connection args (no pooling needed)
 if settings.database_url.startswith("sqlite"):
     kwargs["connect_args"] = {"check_same_thread": False}
-else:
     kwargs["poolclass"] = NullPool
+else:
+    # Production PostgreSQL: proper connection pooling
+    kwargs["poolclass"] = QueuePool
+    kwargs["pool_size"] = 10
+    kwargs["max_overflow"] = 20
+    kwargs["pool_pre_ping"] = True       # Verify connections before use
+    kwargs["pool_recycle"] = 1800        # Recycle connections every 30 min
 
 engine = create_engine(settings.database_url, **kwargs)
 

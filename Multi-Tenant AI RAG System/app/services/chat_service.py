@@ -4,6 +4,7 @@ Supports OpenAI GPT when API key is configured, otherwise returns context-only r
 """
 
 import logging
+import time
 import uuid as uuid_mod
 from uuid import UUID
 
@@ -21,6 +22,10 @@ Answer the user's question based ONLY on the provided context from their documen
 If the context doesn't contain enough information to answer, say so honestly.
 Be concise and precise. Cite the relevant parts of the context when answering."""
 
+# Retry settings for OpenAI API calls
+_MAX_RETRIES = 3
+_RETRY_BASE_DELAY = 1.0  # seconds, doubles each retry
+
 
 def _build_context_block(chunks: list[dict]) -> str:
     parts: list[str] = []
@@ -35,8 +40,8 @@ def _has_valid_openai_key() -> bool:
 
 
 def _call_openai(question: str, context: str, history: list[dict]) -> str:
-    """Call OpenAI ChatCompletion API."""
-    from openai import OpenAI
+    """Call OpenAI ChatCompletion API with retry and exponential backoff."""
+    from openai import APIConnectionError, APITimeoutError, OpenAI, RateLimitError
 
     client = OpenAI(api_key=settings.openai_api_key)
 
@@ -56,14 +61,27 @@ Question: {question}"""
 
     messages.append({"role": "user", "content": user_message})
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=messages,
-        temperature=0.3,
-        max_tokens=1024,
-    )
+    last_exc: Exception | None = None
+    for attempt in range(_MAX_RETRIES):
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
+                temperature=0.3,
+                max_tokens=1024,
+            )
+            return response.choices[0].message.content or "No response generated."
+        except (APIConnectionError, APITimeoutError, RateLimitError) as exc:
+            last_exc = exc
+            delay = _RETRY_BASE_DELAY * (2 ** attempt)
+            logger.warning("OpenAI API error (attempt %d/%d): %s — retrying in %.1fs", attempt + 1, _MAX_RETRIES, exc, delay)
+            time.sleep(delay)
+        except Exception as exc:
+            logger.error("OpenAI non-retryable error: %s", exc)
+            return f"AI generation failed: {type(exc).__name__}. Showing document context instead.\n\n{context}"
 
-    return response.choices[0].message.content or "No response generated."
+    logger.error("OpenAI API failed after %d retries: %s", _MAX_RETRIES, last_exc)
+    return f"AI service temporarily unavailable. Showing document context instead.\n\n{context}"
 
 
 def _fallback_response(question: str, context: str) -> str:
@@ -133,6 +151,51 @@ class ChatService:
             "sources": chunks,
         }
 
+    def list_conversations(
+        self,
+        tenant_id: UUID,
+        user_id: UUID,
+    ) -> list[dict]:
+        """Return a list of conversations with their last message timestamp."""
+        from sqlalchemy import func
+
+        rows = (
+            self.db.query(
+                ChatMessage.conversation_id,
+                func.count(ChatMessage.id).label("message_count"),
+                func.min(ChatMessage.created_at).label("started_at"),
+                func.max(ChatMessage.created_at).label("last_message_at"),
+            )
+            .filter(
+                ChatMessage.tenant_id == tenant_id,
+                ChatMessage.user_id == user_id,
+            )
+            .group_by(ChatMessage.conversation_id)
+            .order_by(func.max(ChatMessage.created_at).desc())
+            .all()
+        )
+
+        result = []
+        for row in rows:
+            # Fetch first user message as preview
+            first_msg = (
+                self.db.query(ChatMessage.content)
+                .filter(
+                    ChatMessage.conversation_id == row.conversation_id,
+                    ChatMessage.role == MessageRole.USER,
+                )
+                .order_by(ChatMessage.created_at.asc())
+                .first()
+            )
+            result.append({
+                "conversation_id": row.conversation_id,
+                "message_count": row.message_count,
+                "started_at": row.started_at.isoformat() if row.started_at else None,
+                "last_message_at": row.last_message_at.isoformat() if row.last_message_at else None,
+                "preview": (first_msg[0][:100] + "...") if first_msg and len(first_msg[0]) > 100 else (first_msg[0] if first_msg else ""),
+            })
+        return result
+
     def get_conversation(
         self,
         tenant_id: UUID,
@@ -149,6 +212,25 @@ class ChatService:
             .order_by(ChatMessage.created_at.asc())
             .all()
         )
+
+    def delete_conversation(
+        self,
+        tenant_id: UUID,
+        user_id: UUID,
+        conversation_id: str,
+    ) -> int:
+        """Delete all messages in a conversation. Returns deleted count."""
+        count = (
+            self.db.query(ChatMessage)
+            .filter(
+                ChatMessage.tenant_id == tenant_id,
+                ChatMessage.user_id == user_id,
+                ChatMessage.conversation_id == conversation_id,
+            )
+            .delete(synchronize_session=False)
+        )
+        self.db.commit()
+        return count
 
     def _get_history(self, tenant_id: UUID, user_id: UUID, conversation_id: str) -> list[dict]:
         messages = self.get_conversation(tenant_id, user_id, conversation_id)

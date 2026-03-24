@@ -7,10 +7,11 @@ from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 from app.dependencies.auth import get_current_user
-from app.models.audit_log import AuditLog
+from app.models.audit_log import AuditAction, AuditLog
 from app.models.chat import ChatMessage
 from app.models.document import Document
 from app.models.user import User
+from app.services.audit_service import AuditService
 
 router = APIRouter(prefix="/me", tags=["Account"])
 
@@ -24,6 +25,16 @@ def export_my_data(
     GDPR Article 20 — Data portability.  Returns all personal data
     associated with the authenticated user in a machine-readable format.
     """
+    # Log export action
+    audit = AuditService(db)
+    audit.log(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action=AuditAction.DATA_EXPORT,
+        resource_type="user",
+        resource_id=str(current_user.id),
+    )
+
     documents = (
         db.query(Document)
         .filter(Document.uploaded_by_id == current_user.id)

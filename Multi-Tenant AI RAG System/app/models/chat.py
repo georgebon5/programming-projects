@@ -2,12 +2,11 @@
 ChatMessage SQLAlchemy model for conversation history.
 """
 
-from datetime import datetime
 import enum
 import uuid
+from datetime import datetime
 
 from sqlalchemy import Column, DateTime, Enum, ForeignKey, String, Text, Uuid
-from sqlalchemy.orm import relationship
 
 from app.db.database import Base
 
