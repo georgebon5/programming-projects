@@ -4,7 +4,7 @@ AuditLog SQLAlchemy model — tracks user actions for security and compliance.
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, Enum, ForeignKey, String, Text, Uuid
 
@@ -65,7 +65,7 @@ class AuditLog(Base):
     resource_id = Column(String(255), nullable=True)  # ID of affected resource
     details = Column(Text, nullable=True)  # JSON-encoded extra info
     ip_address = Column(String(45), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
 
     def __repr__(self) -> str:
         return f"<AuditLog(id={self.id}, action={self.action}, user_id={self.user_id})>"

@@ -4,7 +4,7 @@ ChatMessage SQLAlchemy model for conversation history.
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, Enum, ForeignKey, String, Text, Uuid
 
@@ -36,7 +36,7 @@ class ChatMessage(Base):
     conversation_id = Column(String(255), nullable=False, index=True)
     role = Column(Enum(MessageRole), nullable=False)
     content = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     def __repr__(self) -> str:
         return f"<ChatMessage(id={self.id}, role={self.role}, conversation_id={self.conversation_id})>"
