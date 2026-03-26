@@ -29,6 +29,14 @@ class Settings(BaseSettings):
     # File Storage
     upload_dir: str = "./local_uploads"
     max_file_size_mb: int = 50
+    storage_backend: str = "local"  # "local" or "s3"
+
+    # S3 / Object Storage (used when storage_backend=s3)
+    s3_bucket_name: str = ""
+    s3_region: str = "us-east-1"
+    s3_access_key_id: str = ""
+    s3_secret_access_key: str = ""
+    s3_endpoint_url: str = ""  # custom endpoint for MinIO / DigitalOcean Spaces
 
     # Vector DB
     vector_db_path: str = "./vector_db"
@@ -64,6 +72,17 @@ class Settings(BaseSettings):
     # Environment
     environment: str = "development"
     debug: bool = False
+
+    # Redis / Celery
+    redis_url: str = "redis://localhost:6379/0"
+    celery_broker_url: str = ""  # defaults to redis_url
+    celery_result_backend: str = ""  # defaults to redis_url
+
+    # Stripe Billing
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_price_pro: str = ""  # Stripe Price ID for the Pro tier
+    stripe_price_enterprise: str = ""
 
     @property
     def cors_origin_list(self) -> list[str]:

@@ -3,7 +3,7 @@ from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db, get_session_factory
@@ -14,6 +14,7 @@ from app.schemas.document import DocumentListResponse, DocumentResponse
 from app.services.audit_service import AuditService
 from app.services.document_service import DocumentService
 from app.services.processing_service import ProcessingService
+from app.services.storage import get_storage_backend
 from app.services.tenant_settings_service import QuotaExceeded, TenantSettingsService
 from app.services.vector_store import delete_document_chunks
 from app.utils.exceptions import DocumentNotFound, DocumentProcessingError
@@ -64,8 +65,16 @@ async def upload_document(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-    # Schedule processing as background task (non-blocking)
-    background_tasks.add_task(_process_document_background, doc.id, current_user.tenant_id)
+    # Schedule processing — prefer Celery if available, fallback to BackgroundTasks
+    try:
+        from app.worker import is_celery_available, process_document_task
+
+        if is_celery_available():
+            process_document_task.delay(str(doc.id), str(current_user.tenant_id))
+        else:
+            background_tasks.add_task(_process_document_background, doc.id, current_user.tenant_id)
+    except Exception:
+        background_tasks.add_task(_process_document_background, doc.id, current_user.tenant_id)
 
     audit = AuditService(db)
     audit.log(
@@ -148,16 +157,27 @@ def download_document(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     file_path = Path(doc.file_path)
-    if not file_path.is_file():
+    storage = get_storage_backend()
+
+    if not storage.exists(doc.file_path):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="File not found on disk",
+            detail="File not found in storage",
         )
 
-    return FileResponse(
-        path=file_path,
-        filename=doc.original_filename,
+    # For local storage we can use FileResponse; for S3 we stream the bytes
+    if file_path.is_file():
+        return FileResponse(
+            path=file_path,
+            filename=doc.original_filename,
+            media_type=doc.mime_type or "application/octet-stream",
+        )
+
+    content = storage.read(doc.file_path)
+    return Response(
+        content=content,
         media_type=doc.mime_type or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{doc.original_filename}"'},
     )
 
 
