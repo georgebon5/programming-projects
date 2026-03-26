@@ -1,3 +1,4 @@
+import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -6,6 +7,7 @@ import bcrypt
 from jose import JWTError, jwt
 
 from app.config import settings
+from app.utils.exceptions import PasswordValidationError
 
 
 class TokenPayloadError(ValueError):
@@ -14,7 +16,6 @@ class TokenPayloadError(ValueError):
 
 def validate_password_strength(password: str) -> None:
     """Enforce password complexity rules based on config."""
-    import re
     min_len = settings.password_min_length
     errors: list[str] = []
     if len(password) < min_len:
@@ -25,10 +26,9 @@ def validate_password_strength(password: str) -> None:
         errors.append("Password must contain at least one lowercase letter")
     if not re.search(r"\d", password):
         errors.append("Password must contain at least one digit")
-    if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", password):
+    if not re.search(r"[!@#$%^&*(),.?\":\{\}|<>]", password):
         errors.append("Password must contain at least one special character")
     if errors:
-        from app.utils.exceptions import PasswordValidationError
         raise PasswordValidationError("; ".join(errors))
 
 

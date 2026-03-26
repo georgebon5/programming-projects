@@ -3,6 +3,8 @@ Rate limiting middleware using SlowAPI.
 Limits per-user (via JWT) to prevent API abuse.
 """
 
+import hashlib
+
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from starlette.requests import Request
@@ -17,7 +19,7 @@ def _get_user_identifier(request: Request) -> str:
     if auth_header.startswith("Bearer "):
         token = auth_header[7:]
         # Use first 16 chars of token as identifier (unique enough, avoids storing full token)
-        return f"user:{token[:16]}"
+        return f"user:{hashlib.sha256(token.encode()).hexdigest()[:16]}"
     return get_remote_address(request)
 
 

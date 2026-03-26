@@ -1,3 +1,4 @@
+import threading
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -11,6 +12,7 @@ from app.utils.security import hash_password, validate_password_strength, verify
 
 # In-memory login attempt tracker  {email: (failed_count, last_attempt_time)}
 _login_attempts: dict[str, tuple[int, datetime]] = {}
+_login_attempts_lock = threading.Lock()
 
 
 class AuthService:
@@ -19,29 +21,32 @@ class AuthService:
 
     def _check_account_lockout(self, email: str) -> None:
         """Raise AccountLockedError if too many recent failed attempts."""
-        record = _login_attempts.get(email)
-        if record is None:
-            return
-        failed_count, last_attempt = record
-        if failed_count >= settings.max_login_attempts:
-            lockout_until = last_attempt + timedelta(minutes=settings.login_lockout_minutes)
-            if datetime.now(UTC) < lockout_until.replace(tzinfo=UTC if lockout_until.tzinfo is None else lockout_until.tzinfo):
-                raise AccountLockedError(
-                    f"Account temporarily locked due to {failed_count} failed login attempts. "
-                    f"Try again in {settings.login_lockout_minutes} minutes."
-                )
-            # Lockout expired — reset
-            _login_attempts.pop(email, None)
+        with _login_attempts_lock:
+            record = _login_attempts.get(email)
+            if record is None:
+                return
+            failed_count, last_attempt = record
+            if failed_count >= settings.max_login_attempts:
+                lockout_until = last_attempt + timedelta(minutes=settings.login_lockout_minutes)
+                if datetime.now(UTC) < lockout_until.replace(tzinfo=UTC if lockout_until.tzinfo is None else lockout_until.tzinfo):
+                    raise AccountLockedError(
+                        f"Account temporarily locked due to {failed_count} failed login attempts. "
+                        f"Try again in {settings.login_lockout_minutes} minutes."
+                    )
+                # Lockout expired — reset
+                _login_attempts.pop(email, None)
 
     def _record_failed_login(self, email: str) -> None:
-        record = _login_attempts.get(email)
-        if record:
-            _login_attempts[email] = (record[0] + 1, datetime.now(UTC).replace(tzinfo=None))
-        else:
-            _login_attempts[email] = (1, datetime.now(UTC).replace(tzinfo=None))
+        with _login_attempts_lock:
+            record = _login_attempts.get(email)
+            if record:
+                _login_attempts[email] = (record[0] + 1, datetime.now(UTC).replace(tzinfo=None))
+            else:
+                _login_attempts[email] = (1, datetime.now(UTC).replace(tzinfo=None))
 
     def _clear_failed_logins(self, email: str) -> None:
-        _login_attempts.pop(email, None)
+        with _login_attempts_lock:
+            _login_attempts.pop(email, None)
 
     def register_tenant_with_admin(
         self,

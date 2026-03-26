@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
@@ -102,7 +104,6 @@ def refresh_token(
     except TokenPayloadError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
 
-    from uuid import UUID
     user_id = UUID(claims["sub"])
     tenant_id = UUID(claims["tenant_id"])
 
