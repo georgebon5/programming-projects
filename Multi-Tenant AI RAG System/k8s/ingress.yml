@@ -1,0 +1,26 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rag-ingress
+  namespace: rag-system
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/websocket-services: "rag-api-svc"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - rag.your-domain.com
+      secretName: rag-tls
+  rules:
+    - host: rag.your-domain.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: rag-api-svc
+                port:
+                  number: 80
