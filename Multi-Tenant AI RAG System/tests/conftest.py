@@ -102,3 +102,43 @@ def register_tenant(client: TestClient, slug: str | None = None):
 
 def auth_header(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture()
+def admin_token(client):
+    """Register a tenant and return the admin token."""
+    _, token = register_tenant(client, f"admin-{uuid.uuid4().hex[:6]}")
+    return token
+
+
+@pytest.fixture()
+def admin_token_alt(client):
+    """Register a second tenant and return its admin token."""
+    _, token = register_tenant(client, f"alt-{uuid.uuid4().hex[:6]}")
+    return token
+
+
+@pytest.fixture()
+def member_token(client):
+    """Register a tenant, create a member user, and return member token."""
+    _, admin_tok = register_tenant(client, f"mem-{uuid.uuid4().hex[:6]}")
+    # Create a member user via admin
+    member_email = f"member-{uuid.uuid4().hex[:6]}@test.com"
+    resp = client.post(
+        "/api/v1/users/",
+        json={
+            "username": "member",
+            "email": member_email,
+            "password": "Password1234!",
+            "role": "member",
+        },
+        headers=auth_header(admin_tok),
+    )
+    assert resp.status_code == 201, resp.text
+    # Login as member
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": member_email, "password": "Password1234!"},
+    )
+    assert login.status_code == 200, login.text
+    return login.json()["access_token"]
