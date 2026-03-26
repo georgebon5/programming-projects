@@ -37,7 +37,7 @@ from app.utils.exceptions import (
     UserNotFound,
 )
 from app.utils.logging import setup_logging
-from app.utils.middleware import BodySizeLimitMiddleware, RequestIDMiddleware, RequestLoggingMiddleware
+from app.utils.middleware import BodySizeLimitMiddleware, RequestIDMiddleware, RequestLoggingMiddleware, SecurityHeadersMiddleware
 from app.utils.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
@@ -125,6 +125,9 @@ app.add_middleware(RequestLoggingMiddleware)
 
 # Request ID tracing
 app.add_middleware(RequestIDMiddleware)
+
+# Security headers (X-Content-Type-Options, X-Frame-Options, CSP, etc.)
+app.add_middleware(SecurityHeadersMiddleware)
 
 # Body size limit
 app.add_middleware(BodySizeLimitMiddleware)
