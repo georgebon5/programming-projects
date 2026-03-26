@@ -40,6 +40,16 @@ class Settings(BaseSettings):
     # Chat
     chat_max_question_chars: int = 4000
 
+    # Email (leave email_host empty to use console backend in development)
+    email_host: str = ""
+    email_port: int = 587
+    email_use_tls: bool = True
+    email_username: str = ""
+    email_password: str = ""
+    email_from: str = "noreply@example.com"
+    frontend_url: str = "http://localhost:8000"
+    password_reset_expire_minutes: int = 30
+
     # Security
     password_min_length: int = 8
     max_login_attempts: int = 5
