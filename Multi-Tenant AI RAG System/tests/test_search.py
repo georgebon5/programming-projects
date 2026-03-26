@@ -87,7 +87,7 @@ class TestEnhancedHealth:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "healthy"
-        assert data["version"] == "0.3.0"
+        assert data["version"] == "0.4.0"
 
     def test_readiness_probe(self, client):
         """Readiness probe checks DB and returns system info."""
@@ -98,4 +98,4 @@ class TestEnhancedHealth:
         assert data["checks"]["database"] == "ok"
         assert "uptime_seconds" in data
         assert "python_version" in data
-        assert data["version"] == "0.3.0"
+        assert data["version"] == "0.4.0"

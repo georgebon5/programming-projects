@@ -37,7 +37,7 @@ from app.utils.exceptions import (
     UserNotFound,
 )
 from app.utils.logging import setup_logging
-from app.utils.middleware import RequestIDMiddleware, RequestLoggingMiddleware
+from app.utils.middleware import BodySizeLimitMiddleware, RequestIDMiddleware, RequestLoggingMiddleware
 from app.utils.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application startup/shutdown lifecycle."""
     # ── Startup ──
     logger.info(
-        "Starting Multi-Tenant AI RAG System v0.3.0 [%s]",
+        "Starting Multi-Tenant AI RAG System v0.4.0 [%s]",
         settings.environment,
     )
     init_db()
@@ -69,7 +69,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title="Multi-Tenant AI RAG System",
     description="Production-ready backend for tenant-specific document AI queries",
-    version="0.3.0",
+    version="0.4.0",
     docs_url="/docs" if settings.debug else None,
     redoc_url="/redoc" if settings.debug else None,
     lifespan=lifespan,
@@ -126,11 +126,15 @@ app.add_middleware(RequestLoggingMiddleware)
 # Request ID tracing
 app.add_middleware(RequestIDMiddleware)
 
+# Body size limit
+app.add_middleware(BodySizeLimitMiddleware)
+
 # Add CORS middleware (origins from CORS_ORIGINS env var)
+_allow_creds = "*" not in settings.cors_origin_list
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
-    allow_credentials=True,
+    allow_credentials=_allow_creds,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -158,7 +162,7 @@ Instrumentator(
 @app.get("/health", tags=["Health"])
 async def health_check() -> dict:
     """Liveness probe — lightweight, always responds."""
-    return {"status": "healthy", "version": "0.3.0"}
+    return {"status": "healthy", "version": "0.4.0"}
 
 
 @app.get("/ready", tags=["Health"])
@@ -186,7 +190,7 @@ async def readiness_check() -> JSONResponse:
     payload = {
         "status": "ready" if overall else "degraded",
         "environment": settings.environment,
-        "version": "0.3.0",
+        "version": "0.4.0",
         "uptime_seconds": round(uptime, 1),
         "python_version": platform.python_version(),
         "checks": checks,
@@ -221,7 +225,7 @@ else:
     async def root() -> dict:
         return {
             "message": "Multi-Tenant AI RAG System API",
-            "version": "0.3.0",
+            "version": "0.4.0",
             "docs": "/docs" if settings.debug else "Not available in production",
         }
 
