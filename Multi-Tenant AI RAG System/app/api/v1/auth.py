@@ -10,12 +10,17 @@ from app.models.user import User
 from app.schemas.auth import (
     CreateTenantAdminRequest,
     CurrentUserResponse,
+    ForgotPasswordRequest,
     LoginRequest,
     RefreshRequest,
+    ResetPasswordRequest,
     TokenResponse,
+    VerifyEmailRequest,
 )
 from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService
+from app.services.email_verification_service import EmailVerificationService
+from app.services.password_reset_service import PasswordResetService
 from app.utils.exceptions import AccountLockedError, PasswordValidationError
 from app.utils.rate_limit import limiter
 from app.utils.security import (
@@ -60,6 +65,9 @@ def register_tenant_admin(
         details={"tenant_name": payload.tenant_name},
         ip_address=request.client.host if request.client else None,
     )
+
+    # Send email verification
+    EmailVerificationService(db).send_verification(user)
 
     return CurrentUserResponse.model_validate(user)
 
@@ -120,3 +128,69 @@ def refresh_token(
 @router.get("/me", response_model=CurrentUserResponse)
 def me(current_user: User = Depends(get_current_user)) -> CurrentUserResponse:
     return CurrentUserResponse.model_validate(current_user)
+
+
+# ── Password Reset ────────────────────────────────────────────────────────────
+
+@router.post("/forgot-password", status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit(lambda: app_settings.rate_limit_auth)
+def forgot_password(
+    request: Request,
+    payload: ForgotPasswordRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Request a password reset email.
+
+    Always returns 202 to prevent email enumeration.
+    """
+    svc = PasswordResetService(db)
+    svc.request_reset(payload.email)
+    return {"detail": "If that email is registered, a reset link has been sent."}
+
+
+@router.post("/reset-password", status_code=status.HTTP_200_OK)
+@limiter.limit(lambda: app_settings.rate_limit_auth)
+def reset_password(
+    request: Request,
+    payload: ResetPasswordRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Reset password using a valid reset token."""
+    svc = PasswordResetService(db)
+    try:
+        svc.reset_password(payload.token, payload.new_password)
+    except PasswordValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {"detail": "Password has been reset successfully."}
+
+
+# ── Email Verification ────────────────────────────────────────────────────────
+
+@router.post("/verify-email", status_code=status.HTTP_200_OK)
+def verify_email(
+    payload: VerifyEmailRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Confirm a user's email address using the token from the verification email."""
+    svc = EmailVerificationService(db)
+    try:
+        svc.verify(payload.token)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {"detail": "Email verified successfully."}
+
+
+@router.post("/resend-verification", status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit(lambda: app_settings.rate_limit_auth)
+def resend_verification(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Resend the verification email to the current user."""
+    if current_user.is_email_verified:
+        return {"detail": "Email is already verified."}
+    EmailVerificationService(db).send_verification(current_user)
+    return {"detail": "Verification email sent."}
