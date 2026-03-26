@@ -49,6 +49,10 @@ class User(Base):
     is_email_verified = Column(Boolean, default=False, nullable=False)
     role = Column(Enum(UserRole), default=UserRole.MEMBER, nullable=False)
 
+    # Two-Factor Authentication
+    totp_secret = Column(String(64), nullable=True)
+    totp_enabled = Column(Boolean, default=False, nullable=False)
+
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
     last_login = Column(DateTime, nullable=True)

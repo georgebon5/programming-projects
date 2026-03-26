@@ -14,6 +14,8 @@ from app.schemas.auth import (
     LoginRequest,
     RefreshRequest,
     ResetPasswordRequest,
+    TOTPCodeRequest,
+    TOTPSetupResponse,
     TokenResponse,
     VerifyEmailRequest,
 )
@@ -85,6 +87,22 @@ def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
         )
+
+    # Check 2FA if enabled
+    if user.totp_enabled:
+        if not payload.totp_code:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="2FA code required",
+                headers={"X-2FA-Required": "true"},
+            )
+        from app.services.totp_service import TwoFactorService
+        totp_svc = TwoFactorService(db)
+        if not totp_svc.verify_code(user, payload.totp_code):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid 2FA code",
+            )
 
     audit = AuditService(db)
     audit.log(
@@ -194,3 +212,49 @@ def resend_verification(
         return {"detail": "Email is already verified."}
     EmailVerificationService(db).send_verification(current_user)
     return {"detail": "Verification email sent."}
+
+
+# ── Two-Factor Authentication ────────────────────────────────────────────────
+
+@router.post("/2fa/enable", response_model=TOTPSetupResponse)
+def enable_2fa(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> TOTPSetupResponse:
+    """Generate a TOTP secret and QR code for two-factor authentication setup."""
+    if current_user.totp_enabled:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="2FA is already enabled")
+    from app.services.totp_service import TwoFactorService
+    svc = TwoFactorService(db)
+    result = svc.generate_secret(current_user)
+    return TOTPSetupResponse(**result)
+
+
+@router.post("/2fa/verify", status_code=status.HTTP_200_OK)
+def verify_2fa(
+    payload: TOTPCodeRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Verify a TOTP code and activate 2FA for the current user."""
+    from app.services.totp_service import TwoFactorService
+    svc = TwoFactorService(db)
+    if not svc.verify_and_enable(current_user, payload.code):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid TOTP code")
+    return {"detail": "Two-factor authentication enabled successfully."}
+
+
+@router.post("/2fa/disable", status_code=status.HTTP_200_OK)
+def disable_2fa(
+    payload: TOTPCodeRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Disable 2FA for the current user (requires a valid TOTP code)."""
+    if not current_user.totp_enabled:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="2FA is not enabled")
+    from app.services.totp_service import TwoFactorService
+    svc = TwoFactorService(db)
+    if not svc.disable(current_user, payload.code):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid TOTP code")
+    return {"detail": "Two-factor authentication disabled."}

@@ -9,6 +9,7 @@ from app.models.user import UserRole
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
+    totp_code: str | None = Field(default=None, min_length=6, max_length=6, pattern=r"^\d{6}$")
 
 
 class CreateTenantAdminRequest(BaseModel):
@@ -55,3 +56,15 @@ class ResetPasswordRequest(BaseModel):
 
 class VerifyEmailRequest(BaseModel):
     token: str = Field(min_length=1, max_length=256)
+
+
+# ── Two-Factor Authentication ────────────────────────────────────────────────
+
+class TOTPCodeRequest(BaseModel):
+    code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+
+class TOTPSetupResponse(BaseModel):
+    secret: str
+    provisioning_uri: str
+    qr_code_base64: str
