@@ -1,7 +1,9 @@
 import logging
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db, get_session_factory
@@ -130,6 +132,33 @@ def get_document(
     except DocumentNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return DocumentResponse.model_validate(doc)
+
+
+@router.get("/{document_id}/download")
+def download_document(
+    document_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    """Download the original uploaded file."""
+    service = DocumentService(db)
+    try:
+        doc = service.get_document(document_id, current_user.tenant_id)
+    except DocumentNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    file_path = Path(doc.file_path)
+    if not file_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found on disk",
+        )
+
+    return FileResponse(
+        path=file_path,
+        filename=doc.original_filename,
+        media_type=doc.mime_type or "application/octet-stream",
+    )
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
