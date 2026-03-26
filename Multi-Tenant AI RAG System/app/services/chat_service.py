@@ -6,6 +6,7 @@ Supports OpenAI GPT when API key is configured, otherwise returns context-only r
 import logging
 import time
 import uuid as uuid_mod
+from collections.abc import AsyncGenerator
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -253,3 +254,70 @@ class ChatService:
         )
         self.db.add(msg)
         self.db.commit()
+
+    async def stream_chat(
+        self,
+        *,
+        tenant_id: UUID,
+        user_id: UUID,
+        question: str,
+        conversation_id: str | None = None,
+        document_id: UUID | None = None,
+        n_context_chunks: int = 5,
+    ) -> AsyncGenerator[str, None]:
+        """Stream a RAG response token-by-token. Falls back to non-streaming."""
+        if not conversation_id:
+            conversation_id = str(uuid_mod.uuid4())
+
+        chunks = search_chunks(
+            tenant_id=tenant_id,
+            query=question,
+            n_results=n_context_chunks,
+            document_id=document_id,
+        )
+        context = _build_context_block(chunks) if chunks else ""
+        history = self._get_history(tenant_id, user_id, conversation_id)
+
+        self._save_message(tenant_id, user_id, conversation_id, MessageRole.USER, question)
+
+        if _has_valid_openai_key():
+            full_answer = ""
+            async for token in _stream_openai(question, context, history):
+                full_answer += token
+                yield token
+            self._save_message(tenant_id, user_id, conversation_id, MessageRole.ASSISTANT, full_answer)
+        else:
+            answer = _fallback_response(question, context)
+            self._save_message(tenant_id, user_id, conversation_id, MessageRole.ASSISTANT, answer)
+            yield answer
+
+
+async def _stream_openai(question: str, context: str, history: list[dict]) -> AsyncGenerator[str, None]:
+    """Stream tokens from OpenAI ChatCompletion API."""
+    from openai import AsyncOpenAI
+
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
+
+    messages = [{"role": "system", "content": _SYSTEM_PROMPT}]
+    for msg in history[-10:]:
+        messages.append({"role": msg["role"], "content": msg["content"]})
+    messages.append({
+        "role": "user",
+        "content": f"Context from documents:\n---\n{context}\n---\n\nQuestion: {question}",
+    })
+
+    try:
+        stream = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            temperature=0.3,
+            max_tokens=1024,
+            stream=True,
+        )
+        async for chunk in stream:
+            delta = chunk.choices[0].delta
+            if delta.content:
+                yield delta.content
+    except Exception as exc:
+        logger.error("OpenAI streaming error: %s", exc)
+        yield f"AI generation failed: {type(exc).__name__}. Showing context instead.\n\n{context}"

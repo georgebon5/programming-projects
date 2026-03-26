@@ -1,7 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+import json
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, status
 from sqlalchemy.orm import Session
 
-from app.db.database import get_db
+from app.db.database import get_db, get_session_factory
 from app.dependencies.auth import get_current_user
 from app.models.audit_log import AuditAction
 from app.models.user import User
@@ -18,7 +21,10 @@ from app.services.audit_service import AuditService
 from app.services.chat_service import ChatService
 from app.services.tenant_settings_service import QuotaExceeded, TenantSettingsService
 from app.utils.rate_limit import limiter
+from app.utils.security import decode_access_token, TokenPayloadError
 from app.config import settings as app_settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -129,3 +135,67 @@ def delete_conversation(
         resource_type="conversation",
         resource_id=conversation_id,
     )
+
+
+# ── WebSocket streaming chat ──────────────────────────────────────────────────
+
+@router.websocket("/ws")
+async def websocket_chat(ws: WebSocket) -> None:
+    """WebSocket endpoint for streaming RAG responses token-by-token.
+
+    Connection:
+        ws://host/api/v1/chat/ws?token=<JWT>
+
+    Send JSON: {"question": "...", "conversation_id": "...", "document_id": "..."}
+    Receive JSON frames: {"type": "token", "content": "..."} or {"type": "done"}
+    """
+    token = ws.query_params.get("token")
+    if not token:
+        await ws.close(code=4001, reason="Missing authentication token")
+        return
+
+    try:
+        claims = decode_access_token(token)
+    except TokenPayloadError:
+        await ws.close(code=4001, reason="Invalid token")
+        return
+
+    from uuid import UUID
+    user_id = UUID(claims["sub"])
+    tenant_id = UUID(claims["tenant_id"])
+
+    await ws.accept()
+
+    db = get_session_factory()()
+    try:
+        while True:
+            raw = await ws.receive_text()
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                await ws.send_json({"type": "error", "content": "Invalid JSON"})
+                continue
+
+            question = data.get("question", "").strip()
+            if not question:
+                await ws.send_json({"type": "error", "content": "Empty question"})
+                continue
+
+            service = ChatService(db)
+            async for token_text in service.stream_chat(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                question=question,
+                conversation_id=data.get("conversation_id"),
+                document_id=UUID(data["document_id"]) if data.get("document_id") else None,
+            ):
+                await ws.send_json({"type": "token", "content": token_text})
+
+            await ws.send_json({"type": "done"})
+    except WebSocketDisconnect:
+        logger.debug("WebSocket client disconnected (user=%s)", user_id)
+    except Exception as exc:
+        logger.error("WebSocket error: %s", exc)
+        await ws.close(code=1011, reason="Internal error")
+    finally:
+        db.close()
