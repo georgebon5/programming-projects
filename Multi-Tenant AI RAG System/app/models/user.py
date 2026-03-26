@@ -46,6 +46,7 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
 
     is_active = Column(Boolean, default=True, nullable=False)
+    is_email_verified = Column(Boolean, default=False, nullable=False)
     role = Column(Enum(UserRole), default=UserRole.MEMBER, nullable=False)
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
