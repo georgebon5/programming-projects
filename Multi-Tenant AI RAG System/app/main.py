@@ -18,6 +18,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.api.v1.api_keys import router as api_keys_router
 from app.api.v1.audit_logs import router as audit_logs_router
 from app.api.v1.auth import router as auth_router
+from app.api.v1.billing import router as billing_router
 from app.api.v1.chat import router as chat_router
 from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.documents import router as documents_router
@@ -53,7 +54,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application startup/shutdown lifecycle."""
     # ── Startup ──
     logger.info(
-        "Starting Multi-Tenant AI RAG System v0.4.0 [%s]",
+        "Starting Multi-Tenant AI RAG System v0.5.0 [%s]",
         settings.environment,
     )
     init_db()
@@ -69,7 +70,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title="Multi-Tenant AI RAG System",
     description="Production-ready backend for tenant-specific document AI queries",
-    version="0.4.0",
+    version="0.5.0",
     docs_url="/docs" if settings.debug else None,
     redoc_url="/redoc" if settings.debug else None,
     lifespan=lifespan,
@@ -151,6 +152,7 @@ app.include_router(audit_logs_router, prefix="/api/v1")
 app.include_router(settings_router, prefix="/api/v1")
 app.include_router(api_keys_router, prefix="/api/v1")
 app.include_router(export_router, prefix="/api/v1")
+app.include_router(billing_router, prefix="/api/v1")
 
 # ── Prometheus Metrics ─────────────────────────────────────────────────────────
 from prometheus_fastapi_instrumentator import Instrumentator

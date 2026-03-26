@@ -34,6 +34,10 @@ class Tenant(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     subscription_tier = Column(String(50), default="free", nullable=False)
 
+    # Stripe billing
+    stripe_customer_id = Column(String(255), nullable=True, unique=True)
+    stripe_subscription_id = Column(String(255), nullable=True, unique=True)
+
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
