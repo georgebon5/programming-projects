@@ -3,8 +3,13 @@ Configuration and environment variables for the application.
 Uses pydantic-settings for type-safe configuration.
 """
 
+import logging
+import sys
 
+from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -30,7 +35,10 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
 
     # CORS
-    cors_origins: str = "*"  # Comma-separated origins, e.g. "https://app.example.com,https://admin.example.com"
+    cors_origins: str = "http://localhost:3000"  # Comma-separated origins
+
+    # Chat
+    chat_max_question_chars: int = 4000
 
     # Security
     password_min_length: int = 8
@@ -45,18 +53,23 @@ class Settings(BaseSettings):
 
     # Environment
     environment: str = "development"
-    debug: bool = True
+    debug: bool = False
 
     @property
     def cors_origin_list(self) -> list[str]:
         """Parse comma-separated CORS origins into a list."""
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
-    class Config:
-        """Pydantic config"""
-        env_file = ".env"
-        case_sensitive = False
+    model_config = ConfigDict(env_file=".env", case_sensitive=False)
 
 
 # Global settings instance
 settings = Settings()
+
+# ── Production safety checks ─────────────────────────────────────────────────
+if settings.environment == "production":
+    if settings.jwt_secret_key == "dev-secret-key-change-in-production":
+        logger.critical("FATAL: JWT_SECRET_KEY is still the default dev key in production!")
+        sys.exit(1)
+    if settings.debug:
+        logger.warning("DEBUG is enabled in production — disable it for safety.")
