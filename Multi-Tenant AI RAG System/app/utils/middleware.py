@@ -1,5 +1,6 @@
 """
-Middleware for request ID tracing and structured request logging.
+Middleware for request ID tracing, structured request logging,
+security headers, and body size limiting.
 """
 
 import logging
@@ -8,7 +9,9 @@ import uuid
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
+
+from app.config import settings as app_settings
 
 logger = logging.getLogger("app.access")
 
@@ -57,3 +60,32 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             },
         )
         return response
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add standard security headers to every response."""
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+            "font-src 'self'; connect-src 'self'; frame-ancestors 'none'"
+        )
+        return response
+
+
+class BodySizeLimitMiddleware(BaseHTTPMiddleware):
+    """Reject requests whose body exceeds the configured max file size."""
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        max_bytes = app_settings.max_file_size_mb * 1024 * 1024
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > max_bytes:
+            return JSONResponse(
+                status_code=413,
+                content={"detail": f"Request body exceeds {app_settings.max_file_size_mb} MB limit"},
+            )
+        return await call_next(request)
