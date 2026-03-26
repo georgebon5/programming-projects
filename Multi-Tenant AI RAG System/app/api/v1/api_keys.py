@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api-keys", tags=["API Keys"])
 @router.post("/", response_model=APIKeyCreatedResponse, status_code=status.HTTP_201_CREATED)
 def create_api_key(
     payload: CreateAPIKeyRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role({UserRole.ADMIN})),
     db: Session = Depends(get_db),
 ) -> APIKeyCreatedResponse:
     """Create a new API key. The raw key is returned only once."""

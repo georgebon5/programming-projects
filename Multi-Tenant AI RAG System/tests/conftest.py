@@ -125,7 +125,7 @@ def member_token(client):
     # Create a member user via admin
     member_email = f"member-{uuid.uuid4().hex[:6]}@test.com"
     resp = client.post(
-        "/api/v1/users/",
+        "/api/v1/users/invite",
         json={
             "username": "member",
             "email": member_email,
