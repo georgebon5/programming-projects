@@ -12,12 +12,12 @@ class ChatRequest(BaseModel):
     document_id: UUID | None = None
     n_context_chunks: int = Field(default=5, ge=1, le=20)
 
-    @field_validator("question")
+    @field_validator("question", mode="after")
     @classmethod
     def question_not_blank(cls, v: str) -> str:
-        if not v.strip():
+        if not v or not v.strip():
             raise ValueError("Question must not be blank")
-        return v
+        return v.strip()
 
 
 class SourceChunk(BaseModel):
