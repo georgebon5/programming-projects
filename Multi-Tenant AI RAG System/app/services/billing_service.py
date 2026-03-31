@@ -105,6 +105,10 @@ class BillingService:
             "customer.subscription.deleted",
         ):
             self._on_subscription_changed(data)
+        elif event_type == "invoice.paid":
+            self._on_invoice_paid(data)
+        elif event_type == "invoice.payment_failed":
+            self._on_invoice_payment_failed(data)
         else:
             logger.debug("Unhandled Stripe event: %s", event_type)
 
@@ -150,3 +154,54 @@ class BillingService:
             tenant.stripe_subscription_id = subscription["id"]
 
         self.db.commit()
+
+    def _on_invoice_paid(self, invoice: dict) -> None:
+        """Re-activate tenant if they were on free tier due to a past dunning cycle."""
+        customer_id = invoice.get("customer")
+        subscription_id = invoice.get("subscription")
+        if not customer_id or not subscription_id:
+            return
+
+        tenant = (
+            self.db.query(Tenant)
+            .filter(Tenant.stripe_customer_id == customer_id)
+            .first()
+        )
+        if not tenant:
+            return
+
+        if tenant.subscription_tier == "free":
+            sub = stripe.Subscription.retrieve(subscription_id)
+            price_id = sub["items"]["data"][0]["price"]["id"]
+            tier = _PRICE_TO_TIER.get(price_id, "pro")
+            tenant.subscription_tier = tier
+            tenant.stripe_subscription_id = subscription_id
+            self.db.commit()
+            logger.info(
+                "Tenant %s re-activated to %s after invoice.paid", tenant.id, tier
+            )
+
+    def _on_invoice_payment_failed(self, invoice: dict) -> None:
+        """Log dunning failures. Stripe retries automatically; final cancellation
+        is handled by customer.subscription.updated/deleted → _on_subscription_changed."""
+        customer_id = invoice.get("customer")
+        attempt_count = invoice.get("attempt_count", 0)
+        amount_due = invoice.get("amount_due", 0)
+        if not customer_id:
+            return
+
+        tenant = (
+            self.db.query(Tenant)
+            .filter(Tenant.stripe_customer_id == customer_id)
+            .first()
+        )
+        if not tenant:
+            return
+
+        logger.warning(
+            "Payment failed for tenant %s — attempt %d, amount due %d cents. "
+            "Stripe will retry automatically.",
+            tenant.id,
+            attempt_count,
+            amount_due,
+        )

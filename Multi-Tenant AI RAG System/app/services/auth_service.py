@@ -22,9 +22,7 @@ class AuthService:
         record = self.db.query(LoginAttempt).filter(LoginAttempt.email == email).first()
         if record is None:
             return
-        if record.locked_until and datetime.now(UTC) < record.locked_until.replace(
-            tzinfo=UTC if record.locked_until.tzinfo is None else record.locked_until.tzinfo
-        ):
+        if record.locked_until and datetime.now(UTC).replace(tzinfo=None) < record.locked_until:
             raise AccountLockedError(
                 f"Account temporarily locked due to {record.failed_count} failed login attempts. "
                 f"Try again in {settings.login_lockout_minutes} minutes."

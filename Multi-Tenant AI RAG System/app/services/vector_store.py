@@ -17,7 +17,8 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 # ── Search result cache (TTL 5 minutes, max 256 entries) ────────────────
-_cache: dict[str, tuple[float, list[dict]]] = {}
+# Cache value: (timestamp, tenant_id_str, results)
+_cache: dict[str, tuple[float, str, list[dict]]] = {}
 _cache_lock = threading.Lock()
 _CACHE_TTL_SECONDS = 300
 _CACHE_MAX_SIZE = 256
@@ -85,7 +86,7 @@ def _cache_get(key: str) -> list[dict] | None:
 
     with _cache_lock:
         if key in _cache:
-            ts, value = _cache[key]
+            ts, _tenant, value = _cache[key]
             if time.time() - ts < _CACHE_TTL_SECONDS:
                 logger.debug("Cache hit for search key %s", key[:12])
                 return value
@@ -93,8 +94,8 @@ def _cache_get(key: str) -> list[dict] | None:
     return None
 
 
-def _cache_set(key: str, value: list[dict]) -> None:
-    """Store value in cache with current timestamp."""
+def _cache_set(key: str, tenant_id: UUID, value: list[dict]) -> None:
+    """Store value in cache with current timestamp and tenant_id for scoped invalidation."""
     import time
 
     with _cache_lock:
@@ -102,15 +103,22 @@ def _cache_set(key: str, value: list[dict]) -> None:
         if len(_cache) >= _CACHE_MAX_SIZE and key not in _cache:
             oldest_key = min(_cache, key=lambda k: _cache[k][0])
             del _cache[oldest_key]
-        _cache[key] = (time.time(), value)
+        _cache[key] = (time.time(), str(tenant_id), value)
 
 
 def invalidate_cache(tenant_id: UUID, document_id: UUID | None = None) -> None:
-    """Invalidate cached search results for a tenant (or specific document)."""
-    prefix = str(tenant_id)
+    """Invalidate cached search results for a specific tenant only."""
+    tenant_str = str(tenant_id)
     with _cache_lock:
-        _cache.clear()
-    logger.debug("Search cache cleared for tenant %s", prefix)
+        keys_to_delete = [k for k, (_ts, tid, _v) in _cache.items() if tid == tenant_str]
+        for k in keys_to_delete:
+            del _cache[k]
+    logger.debug(
+        "Search cache invalidated for tenant %s (document=%s): %d entries removed",
+        tenant_str,
+        document_id,
+        len(keys_to_delete),
+    )
 
 
 def search_chunks(
@@ -135,7 +143,8 @@ def search_chunks(
 
     try:
         collection = client.get_collection(name=_collection_name(tenant_id))
-    except Exception:
+    except Exception as exc:
+        logger.debug("No vector collection found for tenant %s: %s", tenant_id, exc)
         return []
 
     where_filter = None
@@ -161,7 +170,7 @@ def search_chunks(
             })
 
     # Store in cache
-    _cache_set(key, items)
+    _cache_set(key, tenant_id, items)
 
     return items
 
@@ -173,5 +182,10 @@ def delete_document_chunks(tenant_id: UUID, document_id: UUID) -> None:
         collection = client.get_collection(name=_collection_name(tenant_id))
         collection.delete(where={"document_id": str(document_id)})
         invalidate_cache(tenant_id, document_id)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning(
+            "Failed to delete chunks for document %s (tenant %s): %s",
+            document_id,
+            tenant_id,
+            exc,
+        )

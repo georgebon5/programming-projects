@@ -23,6 +23,36 @@ class TestGDPRExport:
         assert resp.status_code in (401, 403)
 
 
+class TestGDPRAccountDeletion:
+    def test_delete_account_removes_user(self, client):
+        user_data, token = register_tenant(client, "gdpr-del")
+        headers = auth_header(token)
+
+        resp = client.delete(
+            "/api/v1/me/account",
+            json={"password": "Password1234!"},
+            headers=headers,
+        )
+        assert resp.status_code == 204
+
+        # Token should now be invalid — user no longer exists
+        resp2 = client.get("/api/v1/auth/me", headers=headers)
+        assert resp2.status_code in (401, 403, 404)
+
+    def test_delete_account_wrong_password(self, client):
+        _, token = register_tenant(client, "gdpr-del-bad")
+        resp = client.delete(
+            "/api/v1/me/account",
+            json={"password": "wrongpassword"},
+            headers=auth_header(token),
+        )
+        assert resp.status_code == 403
+
+    def test_delete_account_unauthenticated(self, client):
+        resp = client.delete("/api/v1/me/account", json={"password": "x"})
+        assert resp.status_code in (401, 403)
+
+
 class TestRequestIDMiddleware:
     def test_response_has_request_id(self, client):
         resp = client.get("/health")

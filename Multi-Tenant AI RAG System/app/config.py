@@ -84,6 +84,10 @@ class Settings(BaseSettings):
     stripe_price_pro: str = ""  # Stripe Price ID for the Pro tier
     stripe_price_enterprise: str = ""
 
+    # Sentry Error Monitoring (leave empty to disable)
+    sentry_dsn: str = ""
+    sentry_traces_sample_rate: float = 0.1  # 10 % of requests traced in production
+
     @property
     def cors_origin_list(self) -> list[str]:
         """Parse comma-separated CORS origins into a list."""
@@ -94,6 +98,24 @@ class Settings(BaseSettings):
 
 # Global settings instance
 settings = Settings()
+
+# ── Startup validation ────────────────────────────────────────────────────────
+if settings.storage_backend == "s3":
+    missing = [
+        name
+        for name, val in [
+            ("S3_BUCKET_NAME", settings.s3_bucket_name),
+            ("S3_ACCESS_KEY_ID", settings.s3_access_key_id),
+            ("S3_SECRET_ACCESS_KEY", settings.s3_secret_access_key),
+        ]
+        if not val
+    ]
+    if missing:
+        logger.critical(
+            "FATAL: STORAGE_BACKEND=s3 but the following required S3 variables are not set: %s",
+            ", ".join(missing),
+        )
+        sys.exit(1)
 
 # ── Production safety checks ─────────────────────────────────────────────────
 if settings.environment == "production":

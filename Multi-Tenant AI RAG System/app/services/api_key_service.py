@@ -74,16 +74,16 @@ class APIKeyService:
         if key_obj is None:
             return None
         # Check expiry
-        if key_obj.expires_at and key_obj.expires_at < datetime.now(UTC).replace(tzinfo=None):
+        if key_obj.expires_at and key_obj.expires_at < datetime.utcnow():
             return None
         # Update last_used_at
-        key_obj.last_used_at = datetime.now(UTC).replace(tzinfo=None)
+        key_obj.last_used_at = datetime.utcnow()
         self.db.commit()
         return key_obj
 
     def cleanup_expired_keys(self) -> int:
         """Deactivate all expired API keys. Returns count of deactivated keys."""
-        now = datetime.now(UTC).replace(tzinfo=None)
+        now = datetime.utcnow()
         expired = (
             self.db.query(APIKey)
             .filter(

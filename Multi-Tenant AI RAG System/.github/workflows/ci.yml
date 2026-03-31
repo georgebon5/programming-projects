@@ -44,13 +44,13 @@ jobs:
           python-version: "3.13"
 
       - name: Install security tools
-        run: pip install bandit safety
+        run: pip install bandit pip-audit
 
       - name: Run bandit (SAST)
         run: bandit -r app/ -c pyproject.toml || bandit -r app/ -ll -ii
 
       - name: Check dependencies for vulnerabilities
-        run: safety check -r requirements.txt --output text || true
+        run: pip-audit -r requirements.txt --skip-editable || true
 
   test:
     name: Test (Python ${{ matrix.python-version }})

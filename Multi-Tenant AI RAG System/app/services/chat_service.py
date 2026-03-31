@@ -157,8 +157,25 @@ class ChatService:
         tenant_id: UUID,
         user_id: UUID,
     ) -> list[dict]:
-        """Return a list of conversations with their last message timestamp."""
-        from sqlalchemy import func
+        """Return a list of conversations with their last message timestamp.
+
+        Uses a correlated subquery for the preview to avoid N+1 queries.
+        """
+        from sqlalchemy import func, select
+        from sqlalchemy.orm import aliased
+
+        PreviewMsg = aliased(ChatMessage)
+        preview_subq = (
+            select(PreviewMsg.content)
+            .where(
+                PreviewMsg.conversation_id == ChatMessage.conversation_id,
+                PreviewMsg.role == MessageRole.USER,
+            )
+            .order_by(PreviewMsg.created_at.asc())
+            .limit(1)
+            .correlate(ChatMessage)
+            .scalar_subquery()
+        )
 
         rows = (
             self.db.query(
@@ -166,6 +183,7 @@ class ChatService:
                 func.count(ChatMessage.id).label("message_count"),
                 func.min(ChatMessage.created_at).label("started_at"),
                 func.max(ChatMessage.created_at).label("last_message_at"),
+                preview_subq.label("preview"),
             )
             .filter(
                 ChatMessage.tenant_id == tenant_id,
@@ -178,22 +196,13 @@ class ChatService:
 
         result = []
         for row in rows:
-            # Fetch first user message as preview
-            first_msg = (
-                self.db.query(ChatMessage.content)
-                .filter(
-                    ChatMessage.conversation_id == row.conversation_id,
-                    ChatMessage.role == MessageRole.USER,
-                )
-                .order_by(ChatMessage.created_at.asc())
-                .first()
-            )
+            preview = row.preview or ""
             result.append({
                 "conversation_id": row.conversation_id,
                 "message_count": row.message_count,
                 "started_at": row.started_at.isoformat() if row.started_at else None,
                 "last_message_at": row.last_message_at.isoformat() if row.last_message_at else None,
-                "preview": (first_msg[0][:100] + "...") if first_msg and len(first_msg[0]) > 100 else (first_msg[0] if first_msg else ""),
+                "preview": (preview[:100] + "...") if len(preview) > 100 else preview,
             })
         return result
 

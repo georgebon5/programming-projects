@@ -46,6 +46,22 @@ logger = logging.getLogger(__name__)
 # Configure structured logging before anything else
 setup_logging()
 
+# ── Sentry (initialise before the app so all exceptions are captured) ─────────
+if settings.sentry_dsn:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.environment,
+        traces_sample_rate=settings.sentry_traces_sample_rate,
+        integrations=[FastApiIntegration(), SqlalchemyIntegration()],
+        # Never send PII — strip user IP addresses and request bodies
+        send_default_pii=False,
+    )
+    logger.info("Sentry initialized (environment=%s)", settings.environment)
+
 _start_time = time.time()
 
 
@@ -167,7 +183,7 @@ Instrumentator(
 @app.get("/health", tags=["Health"])
 async def health_check() -> dict:
     """Liveness probe — lightweight, always responds."""
-    return {"status": "healthy", "version": "0.4.0"}
+    return {"status": "healthy", "version": "0.5.0"}
 
 
 @app.get("/ready", tags=["Health"])
@@ -195,7 +211,7 @@ async def readiness_check() -> JSONResponse:
     payload = {
         "status": "ready" if overall else "degraded",
         "environment": settings.environment,
-        "version": "0.4.0",
+        "version": "0.5.0",
         "uptime_seconds": round(uptime, 1),
         "python_version": platform.python_version(),
         "checks": checks,
@@ -230,7 +246,7 @@ else:
     async def root() -> dict:
         return {
             "message": "Multi-Tenant AI RAG System API",
-            "version": "0.4.0",
+            "version": "0.5.0",
             "docs": "/docs" if settings.debug else "Not available in production",
         }
 

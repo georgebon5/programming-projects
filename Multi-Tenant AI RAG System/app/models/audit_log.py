@@ -35,6 +35,7 @@ class AuditAction(str, enum.Enum):
 
     # Account
     DATA_EXPORT = "data_export"
+    ACCOUNT_DELETE = "account_delete"
 
     # Admin
     SETTINGS_UPDATE = "settings_update"

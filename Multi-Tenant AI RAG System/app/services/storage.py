@@ -101,11 +101,15 @@ class S3StorageBackend(StorageBackend):
         logger.info("S3 delete: s3://%s/%s", self._bucket, path)
 
     def exists(self, path: str) -> bool:
+        from botocore.exceptions import ClientError
+
         try:
             self._client.head_object(Bucket=self._bucket, Key=path)
             return True
-        except self._client.exceptions.ClientError:
-            return False
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] in ("404", "NoSuchKey"):
+                return False
+            raise
 
 
 def get_storage_backend() -> StorageBackend:
