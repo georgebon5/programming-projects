@@ -15,6 +15,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.api.v1.admin import router as admin_router
 from app.api.v1.api_keys import router as api_keys_router
 from app.api.v1.audit_logs import router as audit_logs_router
 from app.api.v1.auth import router as auth_router
@@ -159,6 +160,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(admin_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(users_router, prefix="/api/v1")
 app.include_router(documents_router, prefix="/api/v1")

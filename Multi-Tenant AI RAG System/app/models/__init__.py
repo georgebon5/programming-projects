@@ -11,6 +11,7 @@ from app.models.login_attempt import LoginAttempt
 from app.models.password_reset import PasswordResetToken
 from app.models.tenant import Tenant
 from app.models.tenant_settings import TenantSettings
+from app.models.token_blacklist import BlacklistedToken
 from app.models.user import User, UserRole
 
 __all__ = [
@@ -29,4 +30,5 @@ __all__ = [
     "LoginAttempt",
     "PasswordResetToken",
     "EmailVerificationToken",
+    "BlacklistedToken",
 ]

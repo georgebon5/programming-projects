@@ -56,6 +56,8 @@ class User(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
     last_login = Column(DateTime, nullable=True)
+    # Set to invalidate all tokens issued before this timestamp (e.g., on password change)
+    tokens_revoked_at = Column(DateTime, nullable=True)
 
     # Relationships
     tenant = relationship("Tenant", back_populates="users")

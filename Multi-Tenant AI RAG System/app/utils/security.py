@@ -1,4 +1,5 @@
 import re
+import uuid as _uuid_mod
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -44,35 +45,40 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     )
 
 
-def create_access_token(*, user_id: UUID, tenant_id: UUID, role: str) -> tuple[str, int]:
-    expires_delta = timedelta(hours=settings.jwt_expiration_hours)
+def create_access_token(*, user_id: UUID, tenant_id: UUID, role: str) -> tuple[str, int, str]:
+    """Create a short-lived access token (15 minutes). Returns (token, expires_seconds, jti)."""
+    expires_delta = timedelta(minutes=settings.jwt_access_token_expire_minutes)
     expire_at = datetime.now(UTC) + expires_delta
+    jti = str(_uuid_mod.uuid4())
 
     payload: dict[str, Any] = {
         "sub": str(user_id),
         "tenant_id": str(tenant_id),
         "role": role,
+        "jti": jti,
         "exp": int(expire_at.timestamp()),
         "iat": int(datetime.now(UTC).timestamp()),
     }
     token = jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
-    return token, int(expires_delta.total_seconds())
+    return token, int(expires_delta.total_seconds()), jti
 
 
-def create_refresh_token(*, user_id: UUID, tenant_id: UUID) -> tuple[str, int]:
-    """Create a long-lived refresh token (7 days)."""
+def create_refresh_token(*, user_id: UUID, tenant_id: UUID) -> tuple[str, int, str]:
+    """Create a long-lived refresh token (7 days). Returns (token, expires_seconds, jti)."""
     expires_delta = timedelta(days=7)
     expire_at = datetime.now(UTC) + expires_delta
+    jti = str(_uuid_mod.uuid4())
 
     payload: dict[str, Any] = {
         "sub": str(user_id),
         "tenant_id": str(tenant_id),
         "type": "refresh",
+        "jti": jti,
         "exp": int(expire_at.timestamp()),
         "iat": int(datetime.now(UTC).timestamp()),
     }
     token = jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
-    return token, int(expires_delta.total_seconds())
+    return token, int(expires_delta.total_seconds()), jti
 
 
 def decode_access_token(token: str) -> dict[str, Any]:
@@ -81,7 +87,7 @@ def decode_access_token(token: str) -> dict[str, Any]:
     except JWTError as exc:
         raise TokenPayloadError("Invalid or expired token") from exc
 
-    required_fields = {"sub", "tenant_id", "role", "exp"}
+    required_fields = {"sub", "tenant_id", "role", "exp", "jti", "iat"}
     if not required_fields.issubset(payload.keys()):
         raise TokenPayloadError("Token payload is missing required claims")
 
@@ -98,7 +104,7 @@ def decode_refresh_token(token: str) -> dict[str, Any]:
     if payload.get("type") != "refresh":
         raise TokenPayloadError("Token is not a refresh token")
 
-    required_fields = {"sub", "tenant_id", "exp"}
+    required_fields = {"sub", "tenant_id", "exp", "jti", "iat"}
     if not required_fields.issubset(payload.keys()):
         raise TokenPayloadError("Refresh token is missing required claims")
 

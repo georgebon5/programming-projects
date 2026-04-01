@@ -28,7 +28,8 @@ class TestGDPRAccountDeletion:
         user_data, token = register_tenant(client, "gdpr-del")
         headers = auth_header(token)
 
-        resp = client.delete(
+        resp = client.request(
+            "DELETE",
             "/api/v1/me/account",
             json={"password": "Password1234!"},
             headers=headers,
@@ -41,7 +42,8 @@ class TestGDPRAccountDeletion:
 
     def test_delete_account_wrong_password(self, client):
         _, token = register_tenant(client, "gdpr-del-bad")
-        resp = client.delete(
+        resp = client.request(
+            "DELETE",
             "/api/v1/me/account",
             json={"password": "wrongpassword"},
             headers=auth_header(token),
@@ -49,7 +51,7 @@ class TestGDPRAccountDeletion:
         assert resp.status_code == 403
 
     def test_delete_account_unauthenticated(self, client):
-        resp = client.delete("/api/v1/me/account", json={"password": "x"})
+        resp = client.request("DELETE", "/api/v1/me/account", json={"password": "x"})
         assert resp.status_code in (401, 403)
 
 

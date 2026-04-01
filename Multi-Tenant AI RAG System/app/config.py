@@ -21,7 +21,8 @@ class Settings(BaseSettings):
     # JWT & Security
     jwt_secret_key: str = "dev-secret-key-change-in-production"
     jwt_algorithm: str = "HS256"
-    jwt_expiration_hours: int = 24
+    jwt_expiration_hours: int = 24  # kept for backward compatibility
+    jwt_access_token_expire_minutes: int = 15  # short-lived access tokens
 
     # OpenAI
     openai_api_key: str | None = None

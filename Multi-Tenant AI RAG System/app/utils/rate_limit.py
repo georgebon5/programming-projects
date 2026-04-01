@@ -1,8 +1,9 @@
 """
 Rate limiting middleware using SlowAPI.
-Limits per-tenant so all users of the same tenant share a quota.
-This prevents a single tenant from bypassing limits via multiple user accounts.
-Falls back to per-IP for unauthenticated requests.
+Priority:
+  1. X-API-Key header  → per-key bucket (first 12 chars of the key)
+  2. Bearer JWT        → per-tenant bucket (tenant_id from payload)
+  3. Unauthenticated   → per-IP bucket
 """
 
 import base64
@@ -19,11 +20,18 @@ logger = logging.getLogger(__name__)
 
 def _get_tenant_identifier(request: Request) -> str:
     """
-    Extract tenant_id from JWT payload for per-tenant rate limiting.
-    JWT payload is decoded without signature verification (the actual auth
-    validates the token; here we only need a stable bucket key).
-    Falls back to IP address for unauthenticated or invalid requests.
+    Return a stable bucket key for rate limiting.
+
+    - X-API-Key present  → ``apikey:<first-12-chars>``
+    - Bearer JWT present → ``tenant:<tenant_id>`` (or ``user:<hash>`` fallback)
+    - Otherwise          → remote IP address
     """
+    # 1. API key — rate limit per individual key
+    api_key = request.headers.get("X-API-Key")
+    if api_key and len(api_key) >= 12:
+        return f"apikey:{api_key[:12]}"
+
+    # 2. JWT — rate limit per tenant
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         token = auth_header[7:]
@@ -44,7 +52,7 @@ def _get_tenant_identifier(request: Request) -> str:
         # Fallback: per-user bucket (hashed token, avoids storing the raw token)
         return f"user:{hashlib.sha256(token.encode()).hexdigest()[:16]}"
 
-    # Unauthenticated: limit by IP
+    # 3. Unauthenticated: limit by IP
     return get_remote_address(request)
 
 

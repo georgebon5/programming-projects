@@ -12,6 +12,7 @@ import logging
 from uuid import UUID
 
 from celery import Celery
+from celery.schedules import crontab
 
 from app.config import settings
 
@@ -54,6 +55,32 @@ def process_document_task(self, document_id: str, tenant_id: str) -> dict:
         raise self.retry(exc=exc)
     finally:
         db.close()
+
+
+@celery_app.task(bind=True, max_retries=2, default_retry_delay=60)
+def cleanup_expired_tokens_task(self) -> dict:
+    """Periodic cleanup of expired tokens."""
+    from app.db.database import get_session_factory
+    from app.services.cleanup_service import CleanupService
+
+    db = get_session_factory()()
+    try:
+        service = CleanupService(db)
+        return service.cleanup_expired_tokens()
+    except Exception as exc:
+        logger.error("Cleanup task failed: %s", exc)
+        raise self.retry(exc=exc)
+    finally:
+        db.close()
+
+
+celery_app.conf.beat_schedule = {
+    "cleanup-expired-tokens": {
+        "task": "app.worker.cleanup_expired_tokens_task",
+        "schedule": crontab(hour=3, minute=0),
+    },
+}
+celery_app.conf.timezone = "UTC"
 
 
 def is_celery_available() -> bool:

@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
@@ -9,6 +10,7 @@ from app.db.database import get_db
 from app.models.user import User, UserRole
 from app.services.api_key_service import APIKeyService
 from app.services.auth_service import AuthService
+from app.services.token_service import TokenService
 from app.utils.security import TokenPayloadError, decode_access_token
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -52,6 +54,15 @@ def get_current_user(
             detail=str(exc),
         ) from exc
 
+    # Check token blacklist (explicit revocation via logout)
+    jti = payload["jti"]
+    token_svc = TokenService(db)
+    if token_svc.is_blacklisted(jti):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked",
+        )
+
     auth_service = AuthService(db)
     user_id = UUID(payload["sub"])
     token_tenant_id = UUID(payload["tenant_id"])
@@ -65,6 +76,21 @@ def get_current_user(
 
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
+
+    # Check if all tokens were revoked (e.g., after password change)
+    if user.tokens_revoked_at is not None:
+        token_iat = payload["iat"]
+        # Reject tokens whose iat (integer seconds) is strictly before the
+        # revocation second.  Tokens minted in the *same* second pass through;
+        # this is acceptable because the only token that can share the second is
+        # the one used for the password-change request itself, which the caller
+        # is already holding and will discard.
+        revoked_at_ts = int(user.tokens_revoked_at.replace(tzinfo=UTC).timestamp())
+        if token_iat < revoked_at_ts:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been revoked — please log in again",
+            )
 
     return user
 

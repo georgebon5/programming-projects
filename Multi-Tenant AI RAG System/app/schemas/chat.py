@@ -7,7 +7,7 @@ from app.models.chat import MessageRole
 
 
 class ChatRequest(BaseModel):
-    question: str = Field(min_length=1, max_length=2000)
+    question: str = Field(min_length=1, max_length=10000)
     conversation_id: str | None = Field(default=None, max_length=255)
     document_id: UUID | None = None
     n_context_chunks: int = Field(default=5, ge=1, le=20)

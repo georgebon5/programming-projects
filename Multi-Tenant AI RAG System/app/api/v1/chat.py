@@ -21,6 +21,7 @@ from app.services.audit_service import AuditService
 from app.services.chat_service import ChatService
 from app.services.tenant_settings_service import QuotaExceeded, TenantSettingsService
 from app.utils.rate_limit import limiter
+from app.utils.sanitize import sanitize_chat_message
 from app.utils.security import decode_access_token, TokenPayloadError
 from app.config import settings as app_settings
 
@@ -46,14 +47,17 @@ def chat(
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
 
     service = ChatService(db)
-    result = service.chat(
-        tenant_id=current_user.tenant_id,
-        user_id=current_user.id,
-        question=payload.question,
-        conversation_id=payload.conversation_id,
-        document_id=payload.document_id,
-        n_context_chunks=payload.n_context_chunks,
-    )
+    try:
+        result = service.chat(
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.id,
+            question=payload.question,
+            conversation_id=payload.conversation_id,
+            document_id=payload.document_id,
+            n_context_chunks=payload.n_context_chunks,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     audit = AuditService(db)
     audit.log(
@@ -176,9 +180,11 @@ async def websocket_chat(ws: WebSocket) -> None:
                 await ws.send_json({"type": "error", "content": "Invalid JSON"})
                 continue
 
-            question = data.get("question", "").strip()
-            if not question:
-                await ws.send_json({"type": "error", "content": "Empty question"})
+            question = data.get("question", "")
+            try:
+                question = sanitize_chat_message(question, max_length=app_settings.chat_max_question_chars)
+            except ValueError as exc:
+                await ws.send_json({"type": "error", "content": str(exc)})
                 continue
 
             service = ChatService(db)

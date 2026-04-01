@@ -205,7 +205,7 @@ class TestUserIsolation:
 
         resp = client.get("/api/v1/users/", headers=auth_header(token_a))
         assert resp.status_code == 200
-        user_ids = {u["id"] for u in resp.json()}
+        user_ids = {u["id"] for u in resp.json()["users"]}
         assert user_b["id"] not in user_ids
 
     def test_tenant_a_admin_cannot_delete_tenant_b_user(self, client):

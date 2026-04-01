@@ -34,11 +34,17 @@ def change_my_password(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> None:
+    from datetime import datetime, timedelta, timezone
+
     service = UserService(db)
     try:
         service.change_password(current_user, payload.current_password, payload.new_password)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    # Invalidate all previously issued tokens so other sessions are forced to re-authenticate
+    current_user.tokens_revoked_at = datetime.now(timezone.utc)
+    db.commit()
 
 
 @router.post("/invite", response_model=UserResponse, status_code=status.HTTP_201_CREATED)

@@ -12,6 +12,7 @@ from app.schemas.auth import (
     CurrentUserResponse,
     ForgotPasswordRequest,
     LoginRequest,
+    LogoutRequest,
     RefreshRequest,
     ResetPasswordRequest,
     TOTPCodeRequest,
@@ -23,6 +24,7 @@ from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService
 from app.services.email_verification_service import EmailVerificationService
 from app.services.password_reset_service import PasswordResetService
+from app.services.token_service import TokenService
 from app.utils.exceptions import AccountLockedError, PasswordValidationError
 from app.utils.rate_limit import limiter
 from app.utils.security import (
@@ -112,8 +114,8 @@ def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)
         ip_address=request.client.host if request.client else None,
     )
 
-    token, expires = create_access_token(user_id=user.id, tenant_id=user.tenant_id, role=user.role.value)
-    refresh, _ = create_refresh_token(user_id=user.id, tenant_id=user.tenant_id)
+    token, expires, _jti = create_access_token(user_id=user.id, tenant_id=user.tenant_id, role=user.role.value)
+    refresh, _, _refresh_jti = create_refresh_token(user_id=user.id, tenant_id=user.tenant_id)
     return TokenResponse(access_token=token, refresh_token=refresh, expires_in_seconds=expires)
 
 
@@ -124,11 +126,23 @@ def refresh_token(
     payload: RefreshRequest,
     db: Session = Depends(get_db),
 ) -> TokenResponse:
-    """Exchange a valid refresh token for a new access + refresh token pair."""
+    """Exchange a valid refresh token for a new access + refresh token pair (rotation)."""
+    from datetime import UTC, datetime, timezone
+
     try:
         claims = decode_refresh_token(payload.refresh_token)
     except TokenPayloadError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+
+    old_jti = claims["jti"]
+    token_svc = TokenService(db)
+
+    # Detect refresh token reuse (already blacklisted → potential replay attack)
+    if token_svc.is_blacklisted(old_jti):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token has already been used or revoked",
+        )
 
     user_id = UUID(claims["sub"])
     tenant_id = UUID(claims["tenant_id"])
@@ -138,9 +152,83 @@ def refresh_token(
     if user is None or not user.is_active or user.tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
 
-    new_token, expires = create_access_token(user_id=user.id, tenant_id=user.tenant_id, role=user.role.value)
-    new_refresh, _ = create_refresh_token(user_id=user.id, tenant_id=user.tenant_id)
+    # Check global token revocation (e.g., password change)
+    if user.tokens_revoked_at is not None:
+        token_iat = claims["iat"]
+        revoked_at_ts = user.tokens_revoked_at.replace(tzinfo=UTC).timestamp()
+        if token_iat < revoked_at_ts:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been revoked — please log in again",
+            )
+
+    # Blacklist the consumed refresh token before issuing a new pair (rotation)
+    old_exp = datetime.fromtimestamp(claims["exp"], tz=timezone.utc)
+    token_svc.blacklist_token(
+        jti=old_jti,
+        token_type="refresh",
+        user_id=user.id,
+        tenant_id=user.tenant_id,
+        expires_at=old_exp,
+    )
+
+    new_token, expires, _new_jti = create_access_token(user_id=user.id, tenant_id=user.tenant_id, role=user.role.value)
+    new_refresh, _, _new_refresh_jti = create_refresh_token(user_id=user.id, tenant_id=user.tenant_id)
     return TokenResponse(access_token=new_token, refresh_token=new_refresh, expires_in_seconds=expires)
+
+
+@router.post("/logout", status_code=status.HTTP_200_OK)
+def logout(
+    payload: LogoutRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Invalidate the current access token and, optionally, the supplied refresh token."""
+    from datetime import timezone
+
+    from fastapi.security import HTTPAuthorizationCredentials
+
+    from app.utils.security import decode_access_token
+
+    token_svc = TokenService(db)
+
+    # Blacklist the current access token
+    credentials = request.headers.get("Authorization", "")
+    if credentials.startswith("Bearer "):
+        raw_token = credentials.split(" ", 1)[1]
+        try:
+            access_claims = decode_access_token(raw_token)
+            from datetime import datetime
+            access_exp = datetime.fromtimestamp(access_claims["exp"], tz=timezone.utc)
+            token_svc.blacklist_token(
+                jti=access_claims["jti"],
+                token_type="access",
+                user_id=current_user.id,
+                tenant_id=current_user.tenant_id,
+                expires_at=access_exp,
+            )
+        except Exception:
+            pass  # Already expired tokens are harmless
+
+    # Blacklist the refresh token if provided
+    if payload.refresh_token:
+        try:
+            from app.utils.security import decode_refresh_token
+            refresh_claims = decode_refresh_token(payload.refresh_token)
+            from datetime import datetime
+            refresh_exp = datetime.fromtimestamp(refresh_claims["exp"], tz=timezone.utc)
+            token_svc.blacklist_token(
+                jti=refresh_claims["jti"],
+                token_type="refresh",
+                user_id=current_user.id,
+                tenant_id=current_user.tenant_id,
+                expires_at=refresh_exp,
+            )
+        except Exception:
+            pass  # Expired or invalid refresh tokens are benign to ignore
+
+    return {"detail": "Logged out successfully"}
 
 
 @router.get("/me", response_model=CurrentUserResponse)

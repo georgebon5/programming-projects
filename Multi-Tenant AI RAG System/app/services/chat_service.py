@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.chat import ChatMessage, MessageRole
 from app.services.vector_store import search_chunks
+from app.utils.sanitize import sanitize_chat_message
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +118,9 @@ class ChatService:
         3. Generate answer (OpenAI or fallback)
         4. Store in conversation history
         """
+        # Sanitize and validate question
+        question = sanitize_chat_message(question, max_length=settings.chat_max_question_chars)
+
         # Generate or reuse conversation ID
         if not conversation_id:
             conversation_id = str(uuid_mod.uuid4())
@@ -275,6 +279,9 @@ class ChatService:
         n_context_chunks: int = 5,
     ) -> AsyncGenerator[str, None]:
         """Stream a RAG response token-by-token. Falls back to non-streaming."""
+        # Sanitize and validate question
+        question = sanitize_chat_message(question, max_length=settings.chat_max_question_chars)
+
         if not conversation_id:
             conversation_id = str(uuid_mod.uuid4())
 
