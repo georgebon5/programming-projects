@@ -7,12 +7,15 @@ Includes TTL-based caching for search results.
 import hashlib
 import logging
 import threading
+import time
 from uuid import UUID
 
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 
 from app.config import settings
+from app.utils.metrics import VECTOR_CACHE_HITS, VECTOR_CACHE_MISSES, VECTOR_STORE_QUERY_DURATION
+from app.utils.tracing import trace_span
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +140,10 @@ def search_chunks(
     key = _cache_key(tenant_id, query, n_results, document_id)
     cached = _cache_get(key)
     if cached is not None:
+        VECTOR_CACHE_HITS.inc()
         return cached
+
+    VECTOR_CACHE_MISSES.inc()
 
     client = _get_client()
 
@@ -151,23 +157,29 @@ def search_chunks(
     if document_id:
         where_filter = {"document_id": str(document_id)}
 
-    results = collection.query(
-        query_texts=[query],
-        n_results=n_results,
-        where=where_filter,
-    )
+    with trace_span("vector_store.search", {"tenant.id": str(tenant_id), "n_results": n_results}) as span:
+        _query_start = time.time()
+        results = collection.query(
+            query_texts=[query],
+            n_results=n_results,
+            where=where_filter,
+        )
+        VECTOR_STORE_QUERY_DURATION.observe(time.time() - _query_start)
 
-    items: list[dict] = []
-    if results["documents"] and results["documents"][0]:
-        for i, doc_text in enumerate(results["documents"][0]):
-            meta = results["metadatas"][0][i] if results["metadatas"] else {}
-            distance = results["distances"][0][i] if results["distances"] else None
-            items.append({
-                "text": doc_text,
-                "document_id": meta.get("document_id"),
-                "chunk_index": meta.get("chunk_index"),
-                "distance": distance,
-            })
+        items: list[dict] = []
+        if results["documents"] and results["documents"][0]:
+            for i, doc_text in enumerate(results["documents"][0]):
+                meta = results["metadatas"][0][i] if results["metadatas"] else {}
+                distance = results["distances"][0][i] if results["distances"] else None
+                items.append({
+                    "text": doc_text,
+                    "document_id": meta.get("document_id"),
+                    "chunk_index": meta.get("chunk_index"),
+                    "distance": distance,
+                })
+
+        if span:
+            span.set_attribute("vector_store.results_count", len(items))
 
     # Store in cache
     _cache_set(key, tenant_id, items)

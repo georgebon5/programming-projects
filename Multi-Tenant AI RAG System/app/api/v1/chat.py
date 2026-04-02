@@ -20,6 +20,7 @@ from app.schemas.chat import (
 from app.services.audit_service import AuditService
 from app.services.chat_service import ChatService
 from app.services.tenant_settings_service import QuotaExceeded, TenantSettingsService
+from app.utils.metrics import ACTIVE_WEBSOCKET_CONNECTIONS
 from app.utils.rate_limit import limiter
 from app.utils.sanitize import sanitize_chat_message
 from app.utils.security import decode_access_token, TokenPayloadError
@@ -169,6 +170,7 @@ async def websocket_chat(ws: WebSocket) -> None:
     tenant_id = UUID(claims["tenant_id"])
 
     await ws.accept()
+    ACTIVE_WEBSOCKET_CONNECTIONS.inc()
 
     db = get_session_factory()()
     try:
@@ -204,4 +206,5 @@ async def websocket_chat(ws: WebSocket) -> None:
         logger.error("WebSocket error: %s", exc)
         await ws.close(code=1011, reason="Internal error")
     finally:
+        ACTIVE_WEBSOCKET_CONNECTIONS.dec()
         db.close()

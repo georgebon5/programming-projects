@@ -3,6 +3,7 @@ Document processing pipeline: extract text → chunk → store in vector DB.
 """
 
 import logging
+import time
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -13,6 +14,12 @@ from app.services.chunker import chunk_text
 from app.services.text_extractor import extract_text
 from app.services.vector_store import store_chunks
 from app.utils.exceptions import DocumentNotFound, DocumentProcessingError
+from app.utils.metrics import (
+    DOCUMENT_CHUNKS_CREATED,
+    DOCUMENT_PROCESSING_DURATION,
+    DOCUMENTS_PROCESSED_TOTAL,
+)
+from app.utils.tracing import trace_span
 
 logger = logging.getLogger(__name__)
 
@@ -29,70 +36,85 @@ class ProcessingService:
         3. Store chunks in SQL + ChromaDB
         4. Update document status
         """
-        doc = (
-            self.db.query(Document)
-            .filter(Document.id == document_id, Document.tenant_id == tenant_id)
-            .first()
-        )
-        if not doc:
-            raise DocumentNotFound("Document not found")
-
-        if doc.status not in (DocumentStatus.UPLOADED, DocumentStatus.FAILED):
-            raise DocumentProcessingError(
-                f"Document cannot be processed (status: {doc.status.value})"
+        with trace_span("document.process", {"document.id": str(document_id), "tenant.id": str(tenant_id)}) as span:
+            doc = (
+                self.db.query(Document)
+                .filter(Document.id == document_id, Document.tenant_id == tenant_id)
+                .first()
             )
+            if not doc:
+                raise DocumentNotFound("Document not found")
 
-        # Mark as processing
-        doc.status = DocumentStatus.PROCESSING
-        doc.error_message = None
-        self.db.commit()
-
-        try:
-            # 1. Extract text
-            logger.info("Extracting text from %s", doc.file_path)
-            full_text = extract_text(doc.file_path)
-
-            # 2. Chunk text
-            logger.info("Chunking text (%d chars)", len(full_text))
-            chunks = chunk_text(full_text)
-            logger.info("Created %d chunks", len(chunks))
-
-            # 3. Store in ChromaDB
-            logger.info("Storing chunks in vector DB")
-            embedding_ids = store_chunks(
-                tenant_id=tenant_id,
-                document_id=document_id,
-                chunks=chunks,
-            )
-
-            # 4. Store chunks in SQL
-            for i, (chunk_str, emb_id) in enumerate(zip(chunks, embedding_ids, strict=True)):
-                db_chunk = DocumentChunk(
-                    document_id=document_id,
-                    tenant_id=tenant_id,
-                    text=chunk_str,
-                    chunk_index=i,
-                    embedding_id=emb_id,
+            if doc.status not in (DocumentStatus.UPLOADED, DocumentStatus.FAILED):
+                raise DocumentProcessingError(
+                    f"Document cannot be processed (status: {doc.status.value})"
                 )
-                self.db.add(db_chunk)
 
-            # 5. Update document
-            doc.status = DocumentStatus.COMPLETED
-            doc.total_chunks = len(chunks)
-            doc.content_preview = full_text[:500]
-            doc.embedding_model = "chromadb-default"
-            doc.processed_at = datetime.now(UTC).replace(tzinfo=None)
-
+            # Mark as processing
+            doc.status = DocumentStatus.PROCESSING
+            doc.error_message = None
             self.db.commit()
-            self.db.refresh(doc)
-            logger.info("Document %s processed successfully (%d chunks)", document_id, len(chunks))
-            return doc
 
-        except Exception as exc:
-            self.db.rollback()
-            # Update document with error
-            doc.status = DocumentStatus.FAILED
-            doc.error_message = str(exc)[:1000]
-            self.db.commit()
-            logger.error("Document %s processing failed: %s", document_id, exc)
-            raise DocumentProcessingError(str(exc)) from exc
+            start = time.time()
+            try:
+                # 1. Extract text
+                logger.info("Extracting text from %s", doc.file_path)
+                full_text = extract_text(doc.file_path)
+                if span:
+                    span.add_event("text_extracted", {"text_length": len(full_text)})
+
+                # 2. Chunk text
+                logger.info("Chunking text (%d chars)", len(full_text))
+                chunks = chunk_text(full_text)
+                logger.info("Created %d chunks", len(chunks))
+                if span:
+                    span.add_event("text_chunked", {"chunk_count": len(chunks)})
+
+                # 3. Store in ChromaDB
+                logger.info("Storing chunks in vector DB")
+                embedding_ids = store_chunks(
+                    tenant_id=tenant_id,
+                    document_id=document_id,
+                    chunks=chunks,
+                )
+                if span:
+                    span.add_event("vectors_stored", {"embedding_count": len(embedding_ids)})
+
+                # 4. Store chunks in SQL
+                for i, (chunk_str, emb_id) in enumerate(zip(chunks, embedding_ids, strict=True)):
+                    db_chunk = DocumentChunk(
+                        document_id=document_id,
+                        tenant_id=tenant_id,
+                        text=chunk_str,
+                        chunk_index=i,
+                        embedding_id=emb_id,
+                    )
+                    self.db.add(db_chunk)
+
+                # 5. Update document
+                doc.status = DocumentStatus.COMPLETED
+                doc.total_chunks = len(chunks)
+                doc.content_preview = full_text[:500]
+                doc.embedding_model = "chromadb-default"
+                doc.processed_at = datetime.now(UTC).replace(tzinfo=None)
+
+                self.db.commit()
+                self.db.refresh(doc)
+                logger.info("Document %s processed successfully (%d chunks)", document_id, len(chunks))
+
+                duration = time.time() - start
+                DOCUMENTS_PROCESSED_TOTAL.labels(status="success").inc()
+                DOCUMENT_PROCESSING_DURATION.observe(duration)
+                DOCUMENT_CHUNKS_CREATED.inc(len(chunks))
+
+                return doc
+
+            except Exception as exc:
+                self.db.rollback()
+                # Update document with error
+                doc.status = DocumentStatus.FAILED
+                doc.error_message = str(exc)[:1000]
+                self.db.commit()
+                logger.error("Document %s processing failed: %s", document_id, exc)
+                DOCUMENTS_PROCESSED_TOTAL.labels(status="failure").inc()
+                raise DocumentProcessingError(str(exc)) from exc

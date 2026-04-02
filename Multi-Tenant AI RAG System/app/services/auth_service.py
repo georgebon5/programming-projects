@@ -8,6 +8,7 @@ from app.models.login_attempt import LoginAttempt
 from app.models.tenant import Tenant
 from app.models.user import User, UserRole
 from app.utils.exceptions import AccountLockedError, PasswordValidationError
+from app.utils.metrics import AUTH_LOGIN_ATTEMPTS, AUTH_REGISTRATIONS
 from app.utils.security import hash_password, validate_password_strength, verify_password
 
 
@@ -96,27 +97,36 @@ class AuthService:
         self.db.add(user)
         self.db.commit()
         self.db.refresh(user)
+        AUTH_REGISTRATIONS.inc()
         return user
 
     def authenticate_user(self, *, email: str, password: str) -> User | None:
         # Check lockout before attempting authentication
-        self._check_account_lockout(email)
+        try:
+            self._check_account_lockout(email)
+        except AccountLockedError:
+            AUTH_LOGIN_ATTEMPTS.labels(status="locked").inc()
+            raise
 
         user = self.db.query(User).filter(User.email == email).first()
         if not user:
             self._record_failed_login(email)
+            AUTH_LOGIN_ATTEMPTS.labels(status="failed").inc()
             return None
 
         if not user.is_active:
             self._record_failed_login(email)
+            AUTH_LOGIN_ATTEMPTS.labels(status="failed").inc()
             return None
 
         if not verify_password(password, user.hashed_password):
             self._record_failed_login(email)
+            AUTH_LOGIN_ATTEMPTS.labels(status="failed").inc()
             return None
 
         # Successful login — clear any failed attempts
         self._clear_failed_logins(email)
+        AUTH_LOGIN_ATTEMPTS.labels(status="success").inc()
 
         user.last_login = datetime.now(UTC).replace(tzinfo=None)
         self.db.commit()

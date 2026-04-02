@@ -76,6 +76,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     init_db()
     logger.info("Database tables initialized")
+    # Initialize OpenTelemetry tracing (no-op if not configured)
+    from app.utils.tracing import setup_tracing
+    setup_tracing(app=app, engine=engine)
     yield
     # ── Shutdown ──
     logger.info("Shutting down — disposing database connections")

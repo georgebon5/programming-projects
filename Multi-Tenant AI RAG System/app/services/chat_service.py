@@ -14,7 +14,9 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.chat import ChatMessage, MessageRole
 from app.services.vector_store import search_chunks
+from app.utils.metrics import CHAT_CONTEXT_CHUNKS_USED, CHAT_REQUESTS_TOTAL, CHAT_RESPONSE_DURATION
 from app.utils.sanitize import sanitize_chat_message
+from app.utils.tracing import trace_span
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +120,8 @@ class ChatService:
         3. Generate answer (OpenAI or fallback)
         4. Store in conversation history
         """
+        start = time.time()
+
         # Sanitize and validate question
         question = sanitize_chat_message(question, max_length=settings.chat_max_question_chars)
 
@@ -125,30 +129,39 @@ class ChatService:
         if not conversation_id:
             conversation_id = str(uuid_mod.uuid4())
 
-        # 1. Retrieve relevant chunks
-        chunks = search_chunks(
-            tenant_id=tenant_id,
-            query=question,
-            n_results=n_context_chunks,
-            document_id=document_id,
-        )
+        with trace_span("chat.query", {"tenant.id": str(tenant_id), "conversation.id": conversation_id}) as span:
+            # 1. Retrieve relevant chunks
+            chunks = search_chunks(
+                tenant_id=tenant_id,
+                query=question,
+                n_results=n_context_chunks,
+                document_id=document_id,
+            )
 
-        context = _build_context_block(chunks) if chunks else ""
+            context = _build_context_block(chunks) if chunks else ""
 
-        # 2. Load conversation history
-        history = self._get_history(tenant_id, user_id, conversation_id)
+            # 2. Load conversation history
+            history = self._get_history(tenant_id, user_id, conversation_id)
 
-        # 3. Generate answer
-        if _has_valid_openai_key():
-            logger.info("Using OpenAI for RAG response")
-            answer = _call_openai(question, context, history)
-        else:
-            logger.info("No OpenAI key — using fallback context response")
-            answer = _fallback_response(question, context)
+            # 3. Generate answer
+            if _has_valid_openai_key():
+                logger.info("Using OpenAI for RAG response")
+                answer = _call_openai(question, context, history)
+            else:
+                logger.info("No OpenAI key — using fallback context response")
+                answer = _fallback_response(question, context)
 
-        # 4. Save messages to history
-        self._save_message(tenant_id, user_id, conversation_id, MessageRole.USER, question)
-        self._save_message(tenant_id, user_id, conversation_id, MessageRole.ASSISTANT, answer)
+            if span:
+                span.set_attribute("chat.mode", "rag" if _has_valid_openai_key() else "fallback")
+                span.set_attribute("chat.context_chunks", len(chunks))
+
+            # 4. Save messages to history
+            self._save_message(tenant_id, user_id, conversation_id, MessageRole.USER, question)
+            self._save_message(tenant_id, user_id, conversation_id, MessageRole.ASSISTANT, answer)
+
+        CHAT_RESPONSE_DURATION.observe(time.time() - start)
+        CHAT_CONTEXT_CHUNKS_USED.observe(len(chunks))
+        CHAT_REQUESTS_TOTAL.labels(mode="rag" if _has_valid_openai_key() else "fallback").inc()
 
         return {
             "answer": answer,

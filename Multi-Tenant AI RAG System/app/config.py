@@ -89,6 +89,10 @@ class Settings(BaseSettings):
     sentry_dsn: str = ""
     sentry_traces_sample_rate: float = 0.1  # 10 % of requests traced in production
 
+    # OpenTelemetry (leave empty to disable tracing)
+    otel_exporter_endpoint: str = ""
+    otel_service_name: str = "rag-api"
+
     @property
     def cors_origin_list(self) -> list[str]:
         """Parse comma-separated CORS origins into a list."""
