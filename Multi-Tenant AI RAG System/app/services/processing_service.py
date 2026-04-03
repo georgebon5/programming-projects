@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.models.document import Document, DocumentChunk, DocumentStatus
 from app.services.chunker import chunk_text
 from app.services.text_extractor import extract_text
-from app.services.vector_store import store_chunks
+from app.services.vector_store import delete_document_chunks, store_chunks
 from app.utils.exceptions import DocumentNotFound, DocumentProcessingError
 from app.utils.metrics import (
     DOCUMENT_CHUNKS_CREATED,
@@ -118,3 +118,36 @@ class ProcessingService:
                 logger.error("Document %s processing failed: %s", document_id, exc)
                 DOCUMENTS_PROCESSED_TOTAL.labels(status="failure").inc()
                 raise DocumentProcessingError(str(exc)) from exc
+
+    def reprocess_document(self, document_id: UUID, tenant_id: UUID) -> Document:
+        """
+        Re-process a COMPLETED or FAILED document from scratch.
+        Clears existing SQL chunks and ChromaDB vectors before re-running the pipeline.
+        """
+        doc = (
+            self.db.query(Document)
+            .filter(Document.id == document_id, Document.tenant_id == tenant_id)
+            .first()
+        )
+        if not doc:
+            raise DocumentNotFound("Document not found")
+        if doc.status not in (DocumentStatus.COMPLETED, DocumentStatus.FAILED):
+            raise DocumentProcessingError(
+                f"Cannot reprocess document with status: {doc.status.value}"
+            )
+
+        # Clear existing SQL chunks
+        self.db.query(DocumentChunk).filter(
+            DocumentChunk.document_id == document_id
+        ).delete(synchronize_session=False)
+
+        # Clear existing ChromaDB vectors
+        delete_document_chunks(tenant_id, document_id)
+
+        # Reset document status
+        doc.status = DocumentStatus.UPLOADED
+        doc.total_chunks = 0
+        doc.error_message = None
+        self.db.commit()
+
+        return self.process_document(document_id, tenant_id)

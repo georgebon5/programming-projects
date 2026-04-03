@@ -1,4 +1,5 @@
 import uuid as uuid_mod
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID
 
@@ -72,7 +73,10 @@ class DocumentService:
         status_filter: str | None = None,
         search: str | None = None,
     ) -> tuple[list[Document], int]:
-        query = self.db.query(Document).filter(Document.tenant_id == tenant_id)
+        query = self.db.query(Document).filter(
+            Document.tenant_id == tenant_id,
+            Document.deleted_at.is_(None),
+        )
 
         if status_filter:
             try:
@@ -91,19 +95,59 @@ class DocumentService:
     def get_document(self, document_id: UUID, tenant_id: UUID) -> Document:
         doc = (
             self.db.query(Document)
-            .filter(Document.id == document_id, Document.tenant_id == tenant_id)
+            .filter(
+                Document.id == document_id,
+                Document.tenant_id == tenant_id,
+                Document.deleted_at.is_(None),
+            )
             .first()
         )
         if not doc:
             raise DocumentNotFound("Document not found")
         return doc
 
-    def delete_document(self, document_id: UUID, tenant_id: UUID) -> None:
+    def delete_document(self, document_id: UUID, tenant_id: UUID, deleted_by_id: UUID | None = None) -> None:
         doc = self.get_document(document_id, tenant_id)
-
-        # Delete file from storage backend
-        if self._storage.exists(doc.file_path):
-            self._storage.delete(doc.file_path)
-
-        self.db.delete(doc)
+        doc.deleted_at = datetime.now(timezone.utc)
+        doc.deleted_by_id = deleted_by_id
         self.db.commit()
+
+    def restore_document(self, document_id: UUID, tenant_id: UUID) -> Document:
+        doc = self.db.query(Document).filter(
+            Document.id == document_id,
+            Document.tenant_id == tenant_id,
+            Document.deleted_at.isnot(None),
+        ).first()
+        if not doc:
+            raise DocumentNotFound("Deleted document not found")
+        doc.deleted_at = None
+        doc.deleted_by_id = None
+        self.db.commit()
+        self.db.refresh(doc)
+        return doc
+
+    def list_deleted_documents(self, tenant_id: UUID, skip: int = 0, limit: int = 50) -> tuple[list[Document], int]:
+        query = self.db.query(Document).filter(
+            Document.tenant_id == tenant_id,
+            Document.deleted_at.isnot(None),
+        )
+        total = query.count()
+        docs = query.order_by(Document.deleted_at.desc()).offset(skip).limit(limit).all()
+        return docs, total
+
+    def purge_deleted_documents(self, tenant_id: UUID, older_than_days: int = 30) -> int:
+        from datetime import timedelta
+        cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+        docs = self.db.query(Document).filter(
+            Document.tenant_id == tenant_id,
+            Document.deleted_at.isnot(None),
+            Document.deleted_at < cutoff,
+        ).all()
+        count = 0
+        for doc in docs:
+            if self._storage.exists(doc.file_path):
+                self._storage.delete(doc.file_path)
+            self.db.delete(doc)
+            count += 1
+        self.db.commit()
+        return count

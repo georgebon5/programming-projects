@@ -68,9 +68,14 @@ class Document(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
     processed_at = Column(DateTime, nullable=True)
 
+    # Soft delete
+    deleted_at = Column(DateTime, nullable=True, index=True)
+    deleted_by_id = Column(Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
     # Relationships
     tenant = relationship("Tenant", back_populates="documents")
     uploaded_by_user = relationship("User", back_populates="documents", foreign_keys=[uploaded_by_id])
+    deleted_by_user = relationship("User", foreign_keys=[deleted_by_id])
     chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:

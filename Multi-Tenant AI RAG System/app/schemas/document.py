@@ -22,6 +22,7 @@ class DocumentResponse(BaseModel):
     total_chunks: int
     created_at: datetime
     processed_at: datetime | None = None
+    deleted_at: datetime | None = None
 
 
 class DocumentListResponse(BaseModel):
