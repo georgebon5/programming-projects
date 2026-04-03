@@ -28,6 +28,15 @@ _CACHE_MAX_SIZE = 256
 
 
 def _get_client() -> chromadb.ClientAPI:
+    """Return ChromaDB client — HTTP if CHROMA_HOST is set, else local persistent."""
+    if settings.chroma_host:
+        kwargs = {
+            "host": settings.chroma_host,
+            "port": settings.chroma_port,
+        }
+        if settings.chroma_token:
+            kwargs["headers"] = {"Authorization": f"Bearer {settings.chroma_token}"}
+        return chromadb.HttpClient(**kwargs)
     return chromadb.PersistentClient(
         path=settings.vector_db_path,
         settings=ChromaSettings(anonymized_telemetry=False),

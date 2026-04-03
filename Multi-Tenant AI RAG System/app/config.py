@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     vector_db_path: str = "./vector_db"
     embedding_model: str = "text-embedding-3-small"
 
+    # ChromaDB (leave chroma_host empty for embedded/persistent mode)
+    chroma_host: str = ""
+    chroma_port: int = 8000
+    chroma_token: str = ""
+
     # CORS
     cors_origins: str = "http://localhost:3000"  # Comma-separated origins
 

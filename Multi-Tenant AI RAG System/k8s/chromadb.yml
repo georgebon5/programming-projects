@@ -1,0 +1,93 @@
+# ChromaDB StatefulSet for staging/dev environments.
+# For production, consider a managed vector database or a dedicated ChromaDB cluster.
+#
+# The headless Service (clusterIP: None) lets the StatefulSet pods be addressed by
+# their stable DNS names (chromadb-0.chromadb-svc.rag-system.svc.cluster.local).
+# Set CHROMA_HOST=chromadb-svc in the app/celery deployments to enable HTTP client mode.
+
+# Headless Service — required by StatefulSet for stable network identity
+apiVersion: v1
+kind: Service
+metadata:
+  name: chromadb-svc
+  namespace: rag-system
+  labels:
+    app: chromadb
+spec:
+  selector:
+    app: chromadb
+  ports:
+    - port: 8000
+      targetPort: 8000
+  clusterIP: None  # Headless service for StatefulSet
+---
+# ChromaDB StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: chromadb
+  namespace: rag-system
+  labels:
+    app: chromadb
+spec:
+  serviceName: chromadb-svc
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chromadb
+  template:
+    metadata:
+      labels:
+        app: chromadb
+    spec:
+      containers:
+        - name: chromadb
+          image: chromadb/chroma:latest
+          ports:
+            - containerPort: 8000
+              name: chromadb
+          env:
+            - name: CHROMA_SERVER_AUTHN_CREDENTIALS
+              valueFrom:
+                secretKeyRef:
+                  name: rag-secrets
+                  key: CHROMA_TOKEN
+                  optional: true
+            - name: CHROMA_SERVER_AUTHN_PROVIDER
+              value: "chromadb.auth.token_authn.TokenAuthenticationServerProvider"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /api/v1/heartbeat
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/v1/heartbeat
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+          volumeMounts:
+            - name: chroma-data
+              mountPath: /chroma/chroma
+  # VolumeClaimTemplates provision a dedicated PVC per pod replica
+  volumeClaimTemplates:
+    - metadata:
+        name: chroma-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi
+        storageClassName: standard
