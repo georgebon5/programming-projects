@@ -16,6 +16,7 @@ from app.schemas.user import (
     UserResponse,
 )
 from app.services.audit_service import AuditService
+from app.services.cache_service import CacheService
 from app.services.tenant_settings_service import QuotaExceeded, TenantSettingsService
 from app.services.user_service import UserService
 from app.utils.exceptions import UserNotFound
@@ -81,6 +82,8 @@ def invite_user(
         resource_id=str(user.id),
         details={"email": payload.email, "role": payload.role.value if payload.role else "member"},
     )
+
+    CacheService().invalidate("usage", str(current_user.tenant_id))
 
     return UserResponse.model_validate(user)
 
@@ -157,3 +160,5 @@ def delete_user(
         resource_type="user",
         resource_id=str(user_id),
     )
+
+    CacheService().invalidate("usage", str(current_user.tenant_id))

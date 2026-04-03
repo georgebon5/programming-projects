@@ -68,3 +68,7 @@ ACTIVE_WEBSOCKET_CONNECTIONS = Gauge(
     "rag_active_websocket_connections",
     "Currently active WebSocket connections",
 )
+
+# ── Redis Cache ───────────────────────────────────────────────────────────────
+CACHE_HITS = Counter("app_cache_hits_total", "Redis cache hits")
+CACHE_MISSES = Counter("app_cache_misses_total", "Redis cache misses")

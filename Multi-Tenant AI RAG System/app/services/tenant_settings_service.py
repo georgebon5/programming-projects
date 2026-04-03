@@ -12,6 +12,7 @@ from app.models.chat import ChatMessage
 from app.models.document import Document
 from app.models.tenant_settings import TenantSettings
 from app.models.user import User
+from app.services.cache_service import CacheService
 
 
 class QuotaExceeded(Exception):
@@ -22,8 +23,22 @@ class QuotaExceeded(Exception):
 class TenantSettingsService:
     def __init__(self, db: Session) -> None:
         self.db = db
+        self._cache = CacheService()
 
     def get_or_create(self, tenant_id: UUID) -> TenantSettings:
+        tid = str(tenant_id)
+
+        cached = self._cache.get("settings", tid, "config")
+        if cached is not None:
+            # Re-fetch from DB to get a proper ORM object (cache is for existence check only)
+            settings = (
+                self.db.query(TenantSettings)
+                .filter(TenantSettings.tenant_id == tenant_id)
+                .first()
+            )
+            if settings:
+                return settings
+
         settings = (
             self.db.query(TenantSettings)
             .filter(TenantSettings.tenant_id == tenant_id)
@@ -34,6 +49,8 @@ class TenantSettingsService:
             self.db.add(settings)
             self.db.commit()
             self.db.refresh(settings)
+
+        self._cache.set("settings", tid, "config", {"exists": True})
         return settings
 
     def update(self, tenant_id: UUID, **kwargs) -> TenantSettings:
@@ -47,6 +64,7 @@ class TenantSettingsService:
                 setattr(settings, key, value)
         self.db.commit()
         self.db.refresh(settings)
+        self._cache.invalidate("settings", str(tenant_id))
         return settings
 
     def check_user_quota(self, tenant_id: UUID) -> None:
@@ -97,37 +115,42 @@ class TenantSettingsService:
 
     def get_usage(self, tenant_id: UUID) -> dict:
         """Get current usage vs. limits."""
-        settings = self.get_or_create(tenant_id)
+        tid = str(tenant_id)
 
-        user_count = self.db.query(func.count(User.id)).filter(User.tenant_id == tenant_id).scalar() or 0
-        doc_count = self.db.query(func.count(Document.id)).filter(Document.tenant_id == tenant_id).scalar() or 0
-        storage_bytes = (
-            self.db.query(func.coalesce(func.sum(Document.file_size_bytes), 0))
-            .filter(Document.tenant_id == tenant_id)
-            .scalar()
-        )
+        def _fetch() -> dict:
+            s = self.get_or_create(tenant_id)
 
-        today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
-        chat_today = (
-            self.db.query(func.count(ChatMessage.id))
-            .filter(ChatMessage.tenant_id == tenant_id, ChatMessage.created_at >= today_start)
-            .scalar()
-            or 0
-        )
+            user_count = self.db.query(func.count(User.id)).filter(User.tenant_id == tenant_id).scalar() or 0
+            doc_count = self.db.query(func.count(Document.id)).filter(Document.tenant_id == tenant_id).scalar() or 0
+            storage_bytes = (
+                self.db.query(func.coalesce(func.sum(Document.file_size_bytes), 0))
+                .filter(Document.tenant_id == tenant_id)
+                .scalar()
+            )
 
-        return {
-            "users": {"current": user_count, "limit": settings.max_users},
-            "documents": {"current": doc_count, "limit": settings.max_documents},
-            "storage_mb": {
-                "current": round(storage_bytes / (1024 * 1024), 2),
-                "limit": settings.max_storage_mb,
-            },
-            "chat_messages_today": {
-                "current": chat_today,
-                "limit": settings.max_chat_messages_per_day,
-            },
-            "features": {
-                "chat_enabled": settings.chat_enabled,
-                "file_upload_enabled": settings.file_upload_enabled,
-            },
-        }
+            today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+            chat_today = (
+                self.db.query(func.count(ChatMessage.id))
+                .filter(ChatMessage.tenant_id == tenant_id, ChatMessage.created_at >= today_start)
+                .scalar()
+                or 0
+            )
+
+            return {
+                "users": {"current": user_count, "limit": s.max_users},
+                "documents": {"current": doc_count, "limit": s.max_documents},
+                "storage_mb": {
+                    "current": round(storage_bytes / (1024 * 1024), 2),
+                    "limit": s.max_storage_mb,
+                },
+                "chat_messages_today": {
+                    "current": chat_today,
+                    "limit": s.max_chat_messages_per_day,
+                },
+                "features": {
+                    "chat_enabled": s.chat_enabled,
+                    "file_upload_enabled": s.file_upload_enabled,
+                },
+            }
+
+        return self._cache.get_or_set("usage", tid, "stats", _fetch, ttl=60)
