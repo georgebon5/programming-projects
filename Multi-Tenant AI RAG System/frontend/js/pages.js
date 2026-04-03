@@ -1,5 +1,16 @@
 /* ── Page Renderers ────────────────────────────────────────────────────── */
 
+/* ── Loading state helper ─────────────────────────────────────────────── */
+function withLoading(btn, asyncFn) {
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;border-width:2px;vertical-align:middle"></span>';
+  return asyncFn().finally(() => {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  });
+}
+
 function renderLayout(content, activePage) {
   const user = auth.getUser() || {};
   const isAdmin = user.role === 'admin';
@@ -251,20 +262,23 @@ router.register('profile', async () => {
       errEl.style.display = 'block';
       return;
     }
-    try {
-      const res = await api.put('/users/me/password', {
-        current_password: document.getElementById('pw-current').value,
-        new_password: newPw,
-      });
-      if (res.ok || res.status === 204) {
-        toast.success('Ο κωδικός άλλαξε επιτυχώς!');
-        document.getElementById('password-form').reset();
-      } else {
-        const err = await res.json().catch(() => ({}));
-        errEl.textContent = err.detail || 'Σφάλμα αλλαγής κωδικού';
-        errEl.style.display = 'block';
-      }
-    } catch { toast.error('Σφάλμα δικτύου'); }
+    const btn = e.submitter || document.querySelector('#password-form .btn-primary');
+    await withLoading(btn, async () => {
+      try {
+        const res = await api.put('/users/me/password', {
+          current_password: document.getElementById('pw-current').value,
+          new_password: newPw,
+        });
+        if (res.ok || res.status === 204) {
+          toast.success('Ο κωδικός άλλαξε επιτυχώς!');
+          document.getElementById('password-form').reset();
+        } else {
+          const err = await res.json().catch(() => ({}));
+          errEl.textContent = err.detail || 'Σφάλμα αλλαγής κωδικού';
+          errEl.style.display = 'block';
+        }
+      } catch { toast.error('Σφάλμα δικτύου'); }
+    });
   });
 });
 
@@ -392,8 +406,8 @@ router.register('documents', async () => {
                 <td>${d.total_chunks || '-'}</td>
                 <td>${timeAgo(d.created_at)}</td>
                 <td style="display:flex;gap:4px">
-                  ${d.status === 'failed' || d.status === 'uploaded' ? `<button class="btn btn-ghost btn-sm" onclick="reprocessDocument('${d.id}')" title="Επανεπεξεργασία">🔄</button>` : ''}
-                  <button class="btn btn-danger btn-sm" onclick="deleteDocument('${d.id}')">🗑️</button>
+                  ${d.status === 'failed' || d.status === 'uploaded' ? `<button class="btn btn-ghost btn-sm" onclick="reprocessDocument('${d.id}', this)" title="Επανεπεξεργασία">🔄</button>` : ''}
+                  <button class="btn btn-danger btn-sm" onclick="deleteDocument('${d.id}', this)">🗑️</button>
                 </td>
               </tr>
             `).join('')}
@@ -437,29 +451,43 @@ async function uploadFile(file) {
   } catch (e) { toast.error('Σφάλμα δικτύου'); }
 }
 
-async function deleteDocument(id) {
+async function deleteDocument(id, btn) {
   if (!confirm('Σίγουρα θέλεις να διαγράψεις αυτό το έγγραφο;')) return;
-  const res = await api.del(`/documents/${id}`);
-  if (res.ok || res.status === 204) {
-    toast.success('Το έγγραφο διαγράφηκε');
-    router.navigate('documents');
+  const doDelete = async () => {
+    const res = await api.del(`/documents/${id}`);
+    if (res.ok || res.status === 204) {
+      toast.success('Το έγγραφο διαγράφηκε');
+      router.navigate('documents');
+    } else {
+      toast.error('Σφάλμα διαγραφής');
+    }
+  };
+  if (btn) {
+    await withLoading(btn, doDelete);
   } else {
-    toast.error('Σφάλμα διαγραφής');
+    await doDelete();
   }
 }
 
-async function reprocessDocument(id) {
+async function reprocessDocument(id, btn) {
   toast.info('Επανεπεξεργασία εγγράφου...');
-  try {
-    const res = await api.post(`/documents/${id}/process`);
-    if (res.ok) {
-      toast.success('Η επεξεργασία ξεκίνησε!');
-      setTimeout(() => router.navigate('documents'), 1500);
-    } else {
-      const err = await res.json().catch(() => ({}));
-      toast.error(err.detail || 'Σφάλμα επεξεργασίας');
-    }
-  } catch { toast.error('Σφάλμα δικτύου'); }
+  const doReprocess = async () => {
+    try {
+      const res = await api.post(`/documents/${id}/process`);
+      if (res.ok) {
+        toast.success('Η επεξεργασία ξεκίνησε!');
+        setTimeout(() => router.navigate('documents'), 1500);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.detail || 'Σφάλμα επεξεργασίας');
+      }
+    } catch { toast.error('Σφάλμα δικτύου'); }
+  };
+  if (btn) {
+    await withLoading(btn, doReprocess);
+  } else {
+    await doReprocess();
+  }
 }
 
 /* ── CHAT ─────────────────────────────────────────────────────────────── */
@@ -512,6 +540,7 @@ router.register('chat', async () => {
           <div class="chat-input-area">
             <input type="text" id="chat-input" placeholder="Γράψε την ερώτησή σου..." autofocus>
             <button class="btn btn-primary" id="chat-send" onclick="sendChat()">Αποστολή</button>
+            <span id="ws-status" style="font-size:11px;color:var(--text-muted);align-self:center;white-space:nowrap"></span>
           </div>
         </div>
       </div>
@@ -600,7 +629,54 @@ function formatChatMessage(text) {
   return html;
 }
 
-async function sendChat() {
+function _setWsStatus(text, cssClass) {
+  const el = document.getElementById('ws-status');
+  if (!el) return;
+  el.textContent = text;
+  el.className = cssClass || '';
+}
+
+function _updateConvSidebar(convId, firstQuestion) {
+  const convList = document.getElementById('conv-list');
+  if (!convList) return;
+  const emptyEl = convList.querySelector('.conv-empty');
+  if (emptyEl) emptyEl.remove();
+  convList.insertAdjacentHTML('afterbegin', `
+    <div class="conv-item active" data-id="${escapeHtml(convId)}" onclick="loadConversation('${escapeHtml(convId)}')">
+      <div class="conv-preview">${escapeHtml(firstQuestion.substring(0, 100))}${firstQuestion.length > 100 ? '...' : ''}</div>
+      <div class="conv-meta"><span>2 μνμ</span><span>μόλις τώρα</span></div>
+      <button class="conv-delete" onclick="event.stopPropagation();deleteConversation('${escapeHtml(convId)}')" title="Διαγραφή">×</button>
+    </div>
+  `);
+}
+
+async function sendChatHttp(q, msgs) {
+  const body = { question: q };
+  if (currentConversationId) body.conversation_id = currentConversationId;
+
+  const res = await api.post('/chat/', body);
+  document.getElementById('chat-loading')?.remove();
+
+  if (res.ok) {
+    const data = await res.json();
+    const isNew = !currentConversationId;
+    currentConversationId = data.conversation_id;
+
+    let sourcesHtml = '';
+    if (data.sources && data.sources.length) {
+      sourcesHtml = `<div class="sources">📎 Πηγές: ${data.sources.map(s =>
+        escapeHtml((s.text || '').substring(0, 80) + '...')
+      ).join(' | ')}</div>`;
+    }
+    msgs.innerHTML += `<div class="chat-bubble assistant">${formatChatMessage(data.answer)}${sourcesHtml}</div>`;
+    if (isNew) _updateConvSidebar(data.conversation_id, q);
+  } else {
+    const err = await res.json().catch(() => ({}));
+    msgs.innerHTML += `<div class="chat-bubble assistant" style="color:var(--danger)">${escapeHtml(err.detail || 'Σφάλμα')}</div>`;
+  }
+}
+
+function sendChat() {
   const input = document.getElementById('chat-input');
   const q = input.value.trim();
   if (!q) return;
@@ -615,55 +691,99 @@ async function sendChat() {
   document.getElementById('chat-send').disabled = true;
   msgs.scrollTop = msgs.scrollHeight;
 
-  msgs.innerHTML += `<div class="chat-bubble assistant" id="chat-loading"><div class="spinner"></div> Σκέφτομαι...</div>`;
+  // Add a loading / streaming bubble
+  const loadingBubble = document.createElement('div');
+  loadingBubble.className = 'chat-bubble assistant';
+  loadingBubble.id = 'chat-loading';
+  loadingBubble.innerHTML = '<div class="spinner"></div> Σκέφτομαι...';
+  msgs.appendChild(loadingBubble);
   msgs.scrollTop = msgs.scrollHeight;
 
+  const token = api._token();
+  const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const wsUrl = `${wsProto}://${location.host}/api/v1/chat/ws?token=${encodeURIComponent(token)}`;
+
+  let wsOk = false;
+
   try {
-    const body = { question: q };
-    if (currentConversationId) body.conversation_id = currentConversationId;
+    _setWsStatus('Σύνδεση...', 'ws-connecting');
+    const ws = new WebSocket(wsUrl);
 
-    const res = await api.post('/chat/', body);
-    document.getElementById('chat-loading')?.remove();
+    ws.onopen = () => {
+      _setWsStatus('Συνδεδεμένο', 'ws-connected');
+      wsOk = true;
+      const payload = { question: q };
+      if (currentConversationId) payload.conversation_id = currentConversationId;
+      ws.send(JSON.stringify(payload));
+      // Clear loading bubble content for streaming
+      loadingBubble.innerHTML = '';
+    };
 
-    if (res.ok) {
-      const data = await res.json();
-      const isNewConversation = !currentConversationId;
-      currentConversationId = data.conversation_id;
+    ws.onmessage = (event) => {
+      let msg;
+      try { msg = JSON.parse(event.data); } catch { return; }
 
-      let sourcesHtml = '';
-      if (data.sources && data.sources.length) {
-        sourcesHtml = `<div class="sources">📎 Πηγές: ${data.sources.map(s =>
-          escapeHtml(s.text?.substring(0, 80) + '...')
-        ).join(' | ')}</div>`;
-      }
-      msgs.innerHTML += `<div class="chat-bubble assistant">${formatChatMessage(data.answer)}${sourcesHtml}</div>`;
+      if (msg.type === 'chunk') {
+        loadingBubble.innerHTML += escapeHtml(msg.content);
+        msgs.scrollTop = msgs.scrollHeight;
+      } else if (msg.type === 'done') {
+        const isNew = !currentConversationId;
+        currentConversationId = msg.conversation_id;
 
-      // Update conversation sidebar if new conversation
-      if (isNewConversation) {
-        const convList = document.getElementById('conv-list');
-        if (convList) {
-          const emptyEl = convList.querySelector('.conv-empty');
-          if (emptyEl) emptyEl.remove();
-          convList.insertAdjacentHTML('afterbegin', `
-            <div class="conv-item active" data-id="${escapeHtml(data.conversation_id)}" onclick="loadConversation('${escapeHtml(data.conversation_id)}')">
-              <div class="conv-preview">${escapeHtml(q.substring(0, 100))}${q.length > 100 ? '...' : ''}</div>
-              <div class="conv-meta"><span>2 μνμ</span><span>μόλις τώρα</span></div>
-              <button class="conv-delete" onclick="event.stopPropagation();deleteConversation('${escapeHtml(data.conversation_id)}')" title="Διαγραφή">×</button>
-            </div>
-          `);
+        // Re-render the bubble content with proper formatting
+        const fullText = loadingBubble.textContent || '';
+        let sourcesHtml = '';
+        if (msg.sources && msg.sources.length) {
+          sourcesHtml = `<div class="sources">📎 Πηγές: ${msg.sources.map(s =>
+            escapeHtml((s.text || '').substring(0, 80) + '...')
+          ).join(' | ')}</div>`;
         }
-      }
-    } else {
-      const err = await res.json().catch(() => ({}));
-      msgs.innerHTML += `<div class="chat-bubble assistant" style="color:var(--danger)">${escapeHtml(err.detail || 'Σφάλμα')}</div>`;
-    }
-  } catch (e) {
-    document.getElementById('chat-loading')?.remove();
-    msgs.innerHTML += `<div class="chat-bubble assistant" style="color:var(--danger)">Σφάλμα δικτύου</div>`;
-  }
+        loadingBubble.innerHTML = formatChatMessage(fullText) + sourcesHtml;
+        loadingBubble.removeAttribute('id');
 
+        if (isNew) _updateConvSidebar(msg.conversation_id, q);
+
+        ws.close();
+        _setWsStatus('', '');
+        _finishChatInput(input, msgs);
+      } else if (msg.type === 'error') {
+        loadingBubble.innerHTML = `<span style="color:var(--danger)">${escapeHtml(msg.detail || 'Σφάλμα')}</span>`;
+        loadingBubble.removeAttribute('id');
+        ws.close();
+        _setWsStatus('', '');
+        _finishChatInput(input, msgs);
+      }
+    };
+
+    ws.onerror = () => {
+      _setWsStatus('', '');
+      if (!wsOk) {
+        // WebSocket failed before opening — fall back to HTTP
+        loadingBubble.innerHTML = '<div class="spinner"></div> Σκέφτομαι...';
+        sendChatHttp(q, msgs).finally(() => _finishChatInput(input, msgs));
+      }
+    };
+
+    ws.onclose = () => {
+      _setWsStatus('', '');
+      // Abnormal close after ws was open but before 'done' received
+      if (wsOk && document.getElementById('chat-loading')) {
+        loadingBubble.innerHTML = '<div class="spinner"></div> Σκέφτομαι...';
+        sendChatHttp(q, msgs).finally(() => _finishChatInput(input, msgs));
+      }
+    };
+
+  } catch {
+    // WebSocket constructor threw (e.g., in environments that don't support it)
+    _setWsStatus('', '');
+    sendChatHttp(q, msgs).finally(() => _finishChatInput(input, msgs));
+  }
+}
+
+function _finishChatInput(input, msgs) {
   input.disabled = false;
-  document.getElementById('chat-send').disabled = false;
+  const sendBtn = document.getElementById('chat-send');
+  if (sendBtn) sendBtn.disabled = false;
   input.focus();
   msgs.scrollTop = msgs.scrollHeight;
 }
@@ -729,22 +849,25 @@ function showInviteModal() {
   `;
   document.getElementById('invite-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    try {
-      const res = await api.post('/users/invite', {
-        username: document.getElementById('inv-username').value,
-        email: document.getElementById('inv-email').value,
-        password: document.getElementById('inv-password').value,
-        role: document.getElementById('inv-role').value,
-      });
-      if (res.ok) {
-        toast.success('Ο χρήστης προσκλήθηκε!');
-        document.querySelector('.modal-backdrop')?.remove();
-        router.navigate('users');
-      } else {
-        const err = await res.json().catch(() => ({}));
-        toast.error(err.detail || 'Σφάλμα');
-      }
-    } catch { toast.error('Σφάλμα δικτύου'); }
+    const btn = e.submitter || document.querySelector('#invite-form .btn-primary');
+    await withLoading(btn, async () => {
+      try {
+        const res = await api.post('/users/invite', {
+          username: document.getElementById('inv-username').value,
+          email: document.getElementById('inv-email').value,
+          password: document.getElementById('inv-password').value,
+          role: document.getElementById('inv-role').value,
+        });
+        if (res.ok) {
+          toast.success('Ο χρήστης προσκλήθηκε!');
+          document.querySelector('.modal-backdrop')?.remove();
+          router.navigate('users');
+        } else {
+          const err = await res.json().catch(() => ({}));
+          toast.error(err.detail || 'Σφάλμα');
+        }
+      } catch { toast.error('Σφάλμα δικτύου'); }
+    });
   });
 }
 
@@ -812,28 +935,31 @@ function showCreateKeyModal() {
   `;
   document.getElementById('key-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const res = await api.post('/api-keys/', { name: document.getElementById('key-name').value });
-    if (res.ok) {
-      const data = await res.json();
-      document.querySelector('.modal-backdrop').remove();
-      document.getElementById('modal-container').innerHTML = `
-        <div class="modal-backdrop">
-          <div class="modal">
-            <h2>🔑 Κλειδί δημιουργήθηκε!</h2>
-            <p style="color:var(--warning);margin-bottom:12px;font-size:13px">⚠️ Αντίγραψέ το τώρα — δε θα εμφανιστεί ξανά!</p>
-            <div class="form-group">
-              <input value="${escapeHtml(data.raw_key)}" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
-            </div>
-            <div class="modal-actions">
-              <button class="btn btn-primary" onclick="document.querySelector('.modal-backdrop').remove();router.navigate('api-keys')">OK</button>
+    const btn = e.submitter || document.querySelector('#key-form .btn-primary');
+    await withLoading(btn, async () => {
+      const res = await api.post('/api-keys/', { name: document.getElementById('key-name').value });
+      if (res.ok) {
+        const data = await res.json();
+        document.querySelector('.modal-backdrop').remove();
+        document.getElementById('modal-container').innerHTML = `
+          <div class="modal-backdrop">
+            <div class="modal">
+              <h2>🔑 Κλειδί δημιουργήθηκε!</h2>
+              <p style="color:var(--warning);margin-bottom:12px;font-size:13px">⚠️ Αντίγραψέ το τώρα — δε θα εμφανιστεί ξανά!</p>
+              <div class="form-group">
+                <input value="${escapeHtml(data.raw_key)}" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
+              </div>
+              <div class="modal-actions">
+                <button class="btn btn-primary" onclick="document.querySelector('.modal-backdrop').remove();router.navigate('api-keys')">OK</button>
+              </div>
             </div>
           </div>
-        </div>
-      `;
-    } else {
-      const err = await res.json().catch(() => ({}));
-      toast.error(err.detail || 'Σφάλμα');
-    }
+        `;
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.detail || 'Σφάλμα');
+      }
+    });
   });
 }
 
@@ -904,16 +1030,19 @@ router.register('settings', async () => {
 
   document.getElementById('settings-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const res = await api.patch('/admin/settings/', {
-      max_users: parseInt(document.getElementById('set-max-users').value),
-      max_documents: parseInt(document.getElementById('set-max-docs').value),
-      max_storage_mb: parseInt(document.getElementById('set-max-storage').value),
-      max_chat_messages_per_day: parseInt(document.getElementById('set-max-chat').value),
-      chat_enabled: document.getElementById('set-chat-on').checked,
-      file_upload_enabled: document.getElementById('set-upload-on').checked,
+    const btn = e.submitter || document.querySelector('#settings-form .btn-primary');
+    await withLoading(btn, async () => {
+      const res = await api.patch('/admin/settings/', {
+        max_users: parseInt(document.getElementById('set-max-users').value),
+        max_documents: parseInt(document.getElementById('set-max-docs').value),
+        max_storage_mb: parseInt(document.getElementById('set-max-storage').value),
+        max_chat_messages_per_day: parseInt(document.getElementById('set-max-chat').value),
+        chat_enabled: document.getElementById('set-chat-on').checked,
+        file_upload_enabled: document.getElementById('set-upload-on').checked,
+      });
+      if (res.ok) toast.success('Οι ρυθμίσεις αποθηκεύτηκαν!');
+      else toast.error('Σφάλμα αποθήκευσης');
     });
-    if (res.ok) toast.success('Οι ρυθμίσεις αποθηκεύτηκαν!');
-    else toast.error('Σφάλμα αποθήκευσης');
   });
 });
 

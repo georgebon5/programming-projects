@@ -13,7 +13,13 @@ const api = {
     const token = this._token();
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
-    const res = await fetch(`${API}${path}`, { ...opts, headers });
+    let res;
+    try {
+      res = await fetch(`${API}${path}`, { ...opts, headers });
+    } catch {
+      toast.error('Δεν υπάρχει σύνδεση');
+      throw new Error('network_error');
+    }
 
     if (res.status === 401 && path !== '/auth/login' && path !== '/auth/refresh') {
       // Try refresh
@@ -25,6 +31,15 @@ const api = {
       auth.logout();
       return res;
     }
+
+    if (res.status === 429) {
+      toast.error('Υπερβολικά πολλά αιτήματα, δοκίμασε αργότερα');
+    } else if (res.status === 500) {
+      toast.error('Σφάλμα εξυπηρετητή');
+    } else if (res.status === 503) {
+      toast.error('Η υπηρεσία δεν είναι διαθέσιμη');
+    }
+
     return res;
   },
 
@@ -204,3 +219,29 @@ function escapeHtml(text) {
   d.textContent = text;
   return d.innerHTML;
 }
+
+/* ── Offline Detection ────────────────────────────────────────────────── */
+const connectivity = {
+  _banner: null,
+  init() {
+    window.addEventListener('online', () => this.update(true));
+    window.addEventListener('offline', () => this.update(false));
+  },
+  update(isOnline) {
+    if (!isOnline) {
+      if (!this._banner) {
+        this._banner = document.createElement('div');
+        this._banner.className = 'offline-banner';
+        this._banner.textContent = 'Εκτός σύνδεσης — ελέγξτε τη σύνδεσή σας στο internet';
+        document.body.prepend(this._banner);
+      }
+    } else {
+      if (this._banner) {
+        this._banner.remove();
+        this._banner = null;
+        toast.success('Η σύνδεση αποκαταστάθηκε');
+      }
+    }
+  },
+};
+connectivity.init();

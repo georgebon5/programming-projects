@@ -403,3 +403,21 @@ tr:hover td { background: rgba(255,255,255,.02); }
 .chat-bubble code { font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; }
 .chat-bubble strong { font-weight: 700; }
 .chat-bubble em { font-style: italic; }
+
+/* ── Offline Banner ────────────────────────────────────────────────────── */
+.offline-banner {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  background: var(--danger);
+  color: #fff;
+  text-align: center;
+  padding: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  z-index: 10000;
+}
+
+/* ── WebSocket status ──────────────────────────────────────────────────── */
+.ws-connecting { color: var(--warning); }
+.ws-connected { color: var(--success); }
+.ws-error { color: var(--danger); }
