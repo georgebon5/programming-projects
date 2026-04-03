@@ -19,20 +19,26 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # ── User: 2FA fields ──
-    op.add_column("users", sa.Column("totp_secret", sa.String(64), nullable=True))
-    op.add_column("users", sa.Column("totp_enabled", sa.Boolean(), nullable=False, server_default="false"))
+    with op.batch_alter_table("users", schema=None) as batch_op:
+        batch_op.add_column(sa.Column("totp_secret", sa.String(64), nullable=True))
+        batch_op.add_column(sa.Column("totp_enabled", sa.Boolean(), nullable=False, server_default="false"))
 
     # ── Tenant: Stripe billing fields ──
-    op.add_column("tenants", sa.Column("stripe_customer_id", sa.String(255), nullable=True))
-    op.add_column("tenants", sa.Column("stripe_subscription_id", sa.String(255), nullable=True))
-    op.create_unique_constraint("uq_tenants_stripe_customer_id", "tenants", ["stripe_customer_id"])
-    op.create_unique_constraint("uq_tenants_stripe_subscription_id", "tenants", ["stripe_subscription_id"])
+    with op.batch_alter_table("tenants", schema=None) as batch_op:
+        batch_op.add_column(sa.Column("stripe_customer_id", sa.String(255), nullable=True))
+        batch_op.add_column(sa.Column("stripe_subscription_id", sa.String(255), nullable=True))
+        batch_op.create_unique_constraint("uq_tenants_stripe_customer_id", ["stripe_customer_id"])
+        batch_op.create_unique_constraint("uq_tenants_stripe_subscription_id", ["stripe_subscription_id"])
 
 
 def downgrade() -> None:
-    op.drop_constraint("uq_tenants_stripe_subscription_id", "tenants", type_="unique")
-    op.drop_constraint("uq_tenants_stripe_customer_id", "tenants", type_="unique")
-    op.drop_column("tenants", "stripe_subscription_id")
-    op.drop_column("tenants", "stripe_customer_id")
-    op.drop_column("users", "totp_enabled")
-    op.drop_column("users", "totp_secret")
+    # Dropping the columns automatically removes any constraints on them in
+    # batch mode (SQLite copy-and-move strategy reconstructs the table without
+    # the columns and their associated unique constraints).
+    with op.batch_alter_table("tenants", schema=None) as batch_op:
+        batch_op.drop_column("stripe_subscription_id")
+        batch_op.drop_column("stripe_customer_id")
+
+    with op.batch_alter_table("users", schema=None) as batch_op:
+        batch_op.drop_column("totp_enabled")
+        batch_op.drop_column("totp_secret")
