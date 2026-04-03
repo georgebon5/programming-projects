@@ -173,10 +173,13 @@ class ChatService:
         self,
         tenant_id: UUID,
         user_id: UUID,
-    ) -> list[dict]:
-        """Return a list of conversations with their last message timestamp.
+        skip: int = 0,
+        limit: int = 20,
+    ) -> tuple[list[dict], int]:
+        """Return a paginated list of conversations with their last message timestamp.
 
         Uses a correlated subquery for the preview to avoid N+1 queries.
+        Returns a tuple of (conversations, total_count).
         """
         from sqlalchemy import func, select
         from sqlalchemy.orm import aliased
@@ -194,7 +197,7 @@ class ChatService:
             .scalar_subquery()
         )
 
-        rows = (
+        base_query = (
             self.db.query(
                 ChatMessage.conversation_id,
                 func.count(ChatMessage.id).label("message_count"),
@@ -207,7 +210,16 @@ class ChatService:
                 ChatMessage.user_id == user_id,
             )
             .group_by(ChatMessage.conversation_id)
+        )
+
+        # Total distinct conversations before pagination
+        total = base_query.count()
+
+        rows = (
+            base_query
             .order_by(func.max(ChatMessage.created_at).desc())
+            .offset(skip)
+            .limit(limit)
             .all()
         )
 
@@ -221,7 +233,7 @@ class ChatService:
                 "last_message_at": row.last_message_at.isoformat() if row.last_message_at else None,
                 "preview": (preview[:100] + "...") if len(preview) > 100 else preview,
             })
-        return result
+        return result, total
 
     def get_conversation(
         self,

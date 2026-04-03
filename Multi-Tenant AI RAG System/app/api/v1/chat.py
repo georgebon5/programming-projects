@@ -1,7 +1,7 @@
 import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect, status
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db, get_session_factory
@@ -101,18 +101,31 @@ def get_conversation(
 
 @router.get("/", response_model=ConversationListResponse)
 def list_conversations(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> ConversationListResponse:
-    """List all conversations for the current user."""
+) -> Response:
+    """List conversations for the current user with pagination.
+
+    Use ``skip`` and ``limit`` to page through results.
+    The total conversation count is returned in the ``X-Total-Count`` response header.
+    """
     service = ChatService(db)
-    conversations = service.list_conversations(
+    conversations, total = service.list_conversations(
         tenant_id=current_user.tenant_id,
         user_id=current_user.id,
+        skip=skip,
+        limit=limit,
     )
-    return ConversationListResponse(
+    body = ConversationListResponse(
         conversations=[ConversationSummary(**c) for c in conversations],
-        total=len(conversations),
+        total=total,
+    )
+    return Response(
+        content=body.model_dump_json(),
+        media_type="application/json",
+        headers={"X-Total-Count": str(total)},
     )
 
 
