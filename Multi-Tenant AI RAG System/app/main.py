@@ -20,6 +20,7 @@ from app.api.v1.api_keys import router as api_keys_router
 from app.api.v1.audit_logs import router as audit_logs_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.billing import router as billing_router
+from app.api.v1.webhooks import router as webhooks_router
 from app.api.v1.chat import router as chat_router
 from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.documents import router as documents_router
@@ -174,6 +175,7 @@ app.include_router(settings_router, prefix="/api/v1")
 app.include_router(api_keys_router, prefix="/api/v1")
 app.include_router(export_router, prefix="/api/v1")
 app.include_router(billing_router, prefix="/api/v1")
+app.include_router(webhooks_router, prefix="/api/v1")
 
 # ── Prometheus Metrics ─────────────────────────────────────────────────────────
 from prometheus_fastapi_instrumentator import Instrumentator

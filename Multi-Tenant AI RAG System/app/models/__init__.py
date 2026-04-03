@@ -13,6 +13,7 @@ from app.models.tenant import Tenant
 from app.models.tenant_settings import TenantSettings
 from app.models.token_blacklist import BlacklistedToken
 from app.models.user import User, UserRole
+from app.models.webhook import WebhookDelivery, WebhookEndpoint
 
 __all__ = [
     "Tenant",
@@ -31,4 +32,6 @@ __all__ = [
     "PasswordResetToken",
     "EmailVerificationToken",
     "BlacklistedToken",
+    "WebhookEndpoint",
+    "WebhookDelivery",
 ]
