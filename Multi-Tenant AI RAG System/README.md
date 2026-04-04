@@ -1,6 +1,22 @@
 # Multi-Tenant AI RAG System
 
+![Python](https://img.shields.io/badge/Python-3.12%2B-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-0.104-green) ![License](https://img.shields.io/badge/license-MIT-blue) ![Tests](https://img.shields.io/badge/tests-126%2B-brightgreen)
+
 Production-ready FastAPI backend for tenant-isolated document intelligence. Upload documents, process them into embeddings, and chat with your data using RAG (Retrieval-Augmented Generation).
+
+## Screenshots
+
+| Login | Dashboard |
+|-------|-----------|
+| ![Login](docs/screenshots/login.png) | ![Dashboard](docs/screenshots/dashboard.png) |
+
+| Documents | Chat AI |
+|-----------|---------|
+| ![Documents](docs/screenshots/documents.png) | ![Chat](docs/screenshots/chat.png) |
+
+| Settings | Dark Mode |
+|----------|-----------|
+| ![Settings](docs/screenshots/settings.png) | ![Dark Mode](docs/screenshots/dashboard-dark.png) |
 
 ## Features
 
@@ -17,7 +33,7 @@ Production-ready FastAPI backend for tenant-isolated document intelligence. Uplo
 - **File upload** — supports `.txt`, `.md`, `.pdf`, `.docx` (configurable max size)
 - **Pluggable storage** — local filesystem (default) or S3-compatible object storage (AWS, MinIO, DigitalOcean Spaces)
 - **Background processing** — text extraction → chunking (500 tokens, 50 overlap) → ChromaDB vector indexing. Supports **Celery + Redis** (production) with automatic fallback to FastAPI BackgroundTasks (dev)
-- **RAG chat** — semantic search over tenant documents + LLM generation (OpenAI gpt-4o-mini, with fallback mode if no API key)
+- **RAG chat** — semantic search over tenant documents + LLM generation. Provider priority: **Anthropic Claude** (claude-haiku-4-5) → **OpenAI** (gpt-4o-mini) → graceful fallback mode if no API key configured
 - **WebSocket streaming** — real-time token-by-token streaming of RAG responses via `ws://host/api/v1/chat/ws`
 - **Conversation history** — per-user, per-tenant conversation tracking
 - **Document download** — download original uploaded files
@@ -55,7 +71,7 @@ Production-ready FastAPI backend for tenant-isolated document intelligence. Uplo
 | Migrations | Alembic 1.12 |
 | Database | SQLite (dev) / PostgreSQL 15 (production) |
 | Vector DB | ChromaDB 0.4 |
-| LLM | OpenAI gpt-4o-mini (optional — works without API key in fallback mode) |
+| LLM | Anthropic claude-haiku-4-5 / claude-sonnet-4-6 or OpenAI gpt-4o-mini (both optional — works in fallback mode without any key) |
 | Auth | python-jose (JWT), bcrypt, pyotp (TOTP 2FA) |
 | Rate Limiting | slowapi |
 | Document parsing | pdfplumber, python-docx |
@@ -117,8 +133,24 @@ monitoring/                  # Prometheus & Grafana provisioning
 scripts/                     # Backup/restore scripts
 tests/                       # Pytest test suite (126+ tests)
 tests/load/                  # Locust load testing
-frontend/                    # Vanilla JS SPA frontend
+frontend/                    # Vanilla JS SPA (no build step)
+│   ├── index.html           # Entry point
+│   ├── css/style.css        # Light/dark theme, responsive layout
+│   └── js/
+│       ├── api.js           # HTTP client, auth helpers, router, utilities
+│       └── pages.js         # All page views (login, dashboard, docs, chat, settings)
 ```
+
+## Frontend
+
+A zero-dependency vanilla JS SPA served by FastAPI at `/`. No build step required.
+
+- **Dashboard** — tenant stats, recent activity feed with relative timestamps
+- **Documents** — upload with real-time progress bar, processing status badges (auto-refreshes every 3 s), delete, re-process
+- **Chat** — WebSocket streaming with token-by-token output, conversation history sidebar, per-document filtering
+- **Settings** — tabbed interface for general settings, API keys, and audit log
+- **Dark mode** — toggle persisted to `localStorage`, no flash on reload
+- **Auth guard** — redirect to login when unauthenticated; auto refresh-token on 401
 
 ## Quick Start
 
@@ -193,8 +225,11 @@ This starts PostgreSQL 15 + the app. Runs on port 8000.
 ### Chat
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/v1/chat/` | RAG query against tenant documents |
-| GET | `/api/v1/chat/{conversation_id}` | Get conversation history |
+| POST | `/api/v1/chat/` | RAG query (synchronous) |
+| WS | `/api/v1/chat/ws?token=JWT` | Streaming RAG chat (token-by-token) |
+| GET | `/api/v1/chat/` | List conversations (paginated) |
+| GET | `/api/v1/chat/{conversation_id}` | Get full conversation history |
+| DELETE | `/api/v1/chat/{conversation_id}` | Delete conversation (GDPR erasure) |
 
 ### Admin
 | Method | Path | Description |

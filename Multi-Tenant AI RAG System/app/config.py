@@ -24,8 +24,9 @@ class Settings(BaseSettings):
     jwt_expiration_hours: int = 24  # kept for backward compatibility
     jwt_access_token_expire_minutes: int = 15  # short-lived access tokens
 
-    # OpenAI
+    # LLM API Keys
     openai_api_key: str | None = None
+    anthropic_api_key: str | None = None
 
     # File Storage
     upload_dir: str = "./local_uploads"

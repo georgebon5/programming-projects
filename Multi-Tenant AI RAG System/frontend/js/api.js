@@ -13,13 +13,7 @@ const api = {
     const token = this._token();
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
-    let res;
-    try {
-      res = await fetch(`${API}${path}`, { ...opts, headers });
-    } catch {
-      toast.error('Δεν υπάρχει σύνδεση');
-      throw new Error('network_error');
-    }
+    const res = await fetch(`${API}${path}`, { ...opts, headers });
 
     if (res.status === 401 && path !== '/auth/login' && path !== '/auth/refresh') {
       // Try refresh
@@ -31,15 +25,6 @@ const api = {
       auth.logout();
       return res;
     }
-
-    if (res.status === 429) {
-      toast.error('Υπερβολικά πολλά αιτήματα, δοκίμασε αργότερα');
-    } else if (res.status === 500) {
-      toast.error('Σφάλμα εξυπηρετητή');
-    } else if (res.status === 503) {
-      toast.error('Η υπηρεσία δεν είναι διαθέσιμη');
-    }
-
     return res;
   },
 
@@ -174,6 +159,11 @@ const router = {
   current() { return (window.location.hash || '#login').slice(1).split('?')[0]; },
   render() {
     const page = this.current();
+    // Clear document polling when navigating away from documents
+    if (page !== 'documents' && window._docPollInterval) {
+      clearInterval(window._docPollInterval);
+      window._docPollInterval = null;
+    }
     // Auth guard
     const publicPages = ['login', 'register'];
     if (!publicPages.includes(page) && !auth.isLoggedIn()) {
@@ -205,9 +195,9 @@ function formatBytes(bytes) {
 }
 
 function timeAgo(dateStr) {
+  if (!dateStr) return '-';
   const d = new Date(dateStr);
-  const now = new Date();
-  const sec = Math.floor((now - d) / 1000);
+  const sec = Math.floor((Date.now() - d.getTime()) / 1000);
   if (sec < 60) return 'μόλις τώρα';
   if (sec < 3600) return Math.floor(sec / 60) + ' λεπτά πριν';
   if (sec < 86400) return Math.floor(sec / 3600) + ' ώρες πριν';

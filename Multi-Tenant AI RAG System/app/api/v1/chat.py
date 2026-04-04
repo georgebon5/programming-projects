@@ -203,16 +203,22 @@ async def websocket_chat(ws: WebSocket) -> None:
                 continue
 
             service = ChatService(db)
+            conv_id = data.get("conversation_id")
+            # Send conversation_id early so frontend can track it
+            import uuid as _uuid
+            if not conv_id:
+                conv_id = str(_uuid.uuid4())
+            await ws.send_json({"type": "start", "conversation_id": conv_id})
             async for token_text in service.stream_chat(
                 tenant_id=tenant_id,
                 user_id=user_id,
                 question=question,
-                conversation_id=data.get("conversation_id"),
+                conversation_id=conv_id,
                 document_id=UUID(data["document_id"]) if data.get("document_id") else None,
             ):
                 await ws.send_json({"type": "token", "content": token_text})
 
-            await ws.send_json({"type": "done"})
+            await ws.send_json({"type": "done", "conversation_id": conv_id})
     except WebSocketDisconnect:
         logger.debug("WebSocket client disconnected (user=%s)", user_id)
     except Exception as exc:

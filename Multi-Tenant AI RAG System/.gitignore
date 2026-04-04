@@ -49,3 +49,6 @@ vector_db/
 test_uploads/
 test_vector_db/
 test_unit.db
+
+# Claude Code
+.claude/

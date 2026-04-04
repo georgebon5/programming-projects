@@ -43,6 +43,62 @@ def _has_valid_openai_key() -> bool:
     return bool(key and key.startswith("sk-") and "placeholder" not in key and len(key) > 20)
 
 
+def _has_valid_anthropic_key() -> bool:
+    key = settings.anthropic_api_key
+    return bool(key and key.startswith("sk-ant-") and len(key) > 20)
+
+
+def _get_llm_provider() -> str:
+    """Return the best available LLM provider."""
+    if _has_valid_anthropic_key():
+        return "anthropic"
+    if _has_valid_openai_key():
+        return "openai"
+    return "fallback"
+
+
+def _call_anthropic(question: str, context: str, history: list[dict]) -> str:
+    """Call Anthropic Claude API with retry and exponential backoff."""
+    import anthropic
+
+    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+
+    messages = []
+    for msg in history[-10:]:
+        messages.append({"role": msg["role"], "content": msg["content"]})
+
+    user_message = f"""Context from documents:
+---
+{context}
+---
+
+Question: {question}"""
+    messages.append({"role": "user", "content": user_message})
+
+    last_exc: Exception | None = None
+    for attempt in range(_MAX_RETRIES):
+        try:
+            response = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                system=_SYSTEM_PROMPT,
+                messages=messages,
+                temperature=0.3,
+                max_tokens=1024,
+            )
+            return response.content[0].text or "No response generated."
+        except (anthropic.APIConnectionError, anthropic.APITimeoutError, anthropic.RateLimitError) as exc:
+            last_exc = exc
+            delay = _RETRY_BASE_DELAY * (2 ** attempt)
+            logger.warning("Anthropic API error (attempt %d/%d): %s — retrying in %.1fs", attempt + 1, _MAX_RETRIES, exc, delay)
+            time.sleep(delay)
+        except Exception as exc:
+            logger.error("Anthropic non-retryable error: %s", exc)
+            return f"AI generation failed: {type(exc).__name__}. Showing document context instead.\n\n{context}"
+
+    logger.error("Anthropic API failed after %d retries: %s", _MAX_RETRIES, last_exc)
+    return f"AI service temporarily unavailable. Showing document context instead.\n\n{context}"
+
+
 def _call_openai(question: str, context: str, history: list[dict]) -> str:
     """Call OpenAI ChatCompletion API with retry and exponential backoff."""
     from openai import APIConnectionError, APITimeoutError, OpenAI, RateLimitError
@@ -95,7 +151,7 @@ def _fallback_response(question: str, context: str) -> str:
     return (
         f"**Relevant context found for:** \"{question}\"\n\n"
         f"{context}\n\n"
-        f"_Note: Configure OPENAI_API_KEY for AI-generated answers._"
+        f"_Note: Configure ANTHROPIC_API_KEY or OPENAI_API_KEY for AI-generated answers._"
     )
 
 
@@ -144,15 +200,19 @@ class ChatService:
             history = self._get_history(tenant_id, user_id, conversation_id)
 
             # 3. Generate answer
-            if _has_valid_openai_key():
+            provider = _get_llm_provider()
+            if provider == "anthropic":
+                logger.info("Using Anthropic Claude for RAG response")
+                answer = _call_anthropic(question, context, history)
+            elif provider == "openai":
                 logger.info("Using OpenAI for RAG response")
                 answer = _call_openai(question, context, history)
             else:
-                logger.info("No OpenAI key — using fallback context response")
+                logger.info("No LLM key — using fallback context response")
                 answer = _fallback_response(question, context)
 
             if span:
-                span.set_attribute("chat.mode", "rag" if _has_valid_openai_key() else "fallback")
+                span.set_attribute("chat.mode", provider)
                 span.set_attribute("chat.context_chunks", len(chunks))
 
             # 4. Save messages to history
@@ -161,7 +221,7 @@ class ChatService:
 
         CHAT_RESPONSE_DURATION.observe(time.time() - start)
         CHAT_CONTEXT_CHUNKS_USED.observe(len(chunks))
-        CHAT_REQUESTS_TOTAL.labels(mode="rag" if _has_valid_openai_key() else "fallback").inc()
+        CHAT_REQUESTS_TOTAL.labels(mode=provider).inc()
 
         return {
             "answer": answer,
@@ -321,7 +381,14 @@ class ChatService:
 
         self._save_message(tenant_id, user_id, conversation_id, MessageRole.USER, question)
 
-        if _has_valid_openai_key():
+        provider = _get_llm_provider()
+        if provider == "anthropic":
+            full_answer = ""
+            async for token in _stream_anthropic(question, context, history):
+                full_answer += token
+                yield token
+            self._save_message(tenant_id, user_id, conversation_id, MessageRole.ASSISTANT, full_answer)
+        elif provider == "openai":
             full_answer = ""
             async for token in _stream_openai(question, context, history):
                 full_answer += token
@@ -331,6 +398,35 @@ class ChatService:
             answer = _fallback_response(question, context)
             self._save_message(tenant_id, user_id, conversation_id, MessageRole.ASSISTANT, answer)
             yield answer
+
+
+async def _stream_anthropic(question: str, context: str, history: list[dict]) -> AsyncGenerator[str, None]:
+    """Stream tokens from Anthropic Claude API."""
+    import anthropic
+
+    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+
+    messages = []
+    for msg in history[-10:]:
+        messages.append({"role": msg["role"], "content": msg["content"]})
+    messages.append({
+        "role": "user",
+        "content": f"Context from documents:\n---\n{context}\n---\n\nQuestion: {question}",
+    })
+
+    try:
+        async with client.messages.stream(
+            model="claude-sonnet-4-20250514",
+            system=_SYSTEM_PROMPT,
+            messages=messages,
+            temperature=0.3,
+            max_tokens=1024,
+        ) as stream:
+            async for text in stream.text_stream:
+                yield text
+    except Exception as exc:
+        logger.error("Anthropic streaming error: %s", exc)
+        yield f"AI generation failed: {type(exc).__name__}. Showing context instead.\n\n{context}"
 
 
 async def _stream_openai(question: str, context: str, history: list[dict]) -> AsyncGenerator[str, None]:
