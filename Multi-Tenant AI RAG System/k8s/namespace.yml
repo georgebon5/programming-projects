@@ -1,6 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: rag-system
-  labels:
-    app.kubernetes.io/name: multi-tenant-rag
