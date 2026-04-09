@@ -6,8 +6,6 @@ Each folder represents a different assignment or personal project, covering topi
 Project Highlights
 	•	Database Systems Implementation
 Exercises related to file organization, indexing, and database internals.
-	•	Snakegame-2025
-A classic Snake game built with C.
 	•	eshop
 A simple e-commerce simulation with basic features.
 	•	factor / gcd / rsa
@@ -20,8 +18,7 @@ Object-oriented programming practice in Java.
 System-level programming exercises (processes, memory, low-level logic).
 	•	pacman-project
 A full Pacman game implementation in Python, including agents and game logic.
-	•	website
-A small front-end project using HTML, CSS, and JavaScript.
+
 
 Skills Demonstrated
 	•	C & C++ programming
